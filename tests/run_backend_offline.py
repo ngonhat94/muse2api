@@ -43,9 +43,29 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
        and kw.get('env', {}).get('VPS_SSH_KEY') in ('synthetic', '')
        and kw.get('env', {}).get('VPS_DEPLOY_PATH') == '/data/home/muse2api-production'):
     mock = Path(kw['env']['PATH'].split(os.pathsep)[0]) / 'ssh'
+    import ast
+    expected = next(ast.literal_eval(node.value) for node in ast.parse((ROOT/'tests/test_deploy.py').read_text()).body
+                    if isinstance(node, ast.Assign) and any(isinstance(n, ast.Name) and n.id == 'UPLOAD_SSH_STUB' for n in node.targets))
+    directory = mock.parent.resolve()
+    if (directory.is_relative_to(Path(home).resolve())
+        and kw['env'].get('SSH_UPLOAD_ROOT') == str(directory/'remote')
+        and mock.read_text() == expected):
+     return real_popen(args, *a, **kw)
     if mock.read_text() in (
         '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\ncat >/dev/null\n',
         '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\nif [[ ${SSH_MOCK_FAIL:-} == 1 ]]; then\n  for arg in "$@"; do\n    if [[ $arg == */config ]]; then cat "$arg" >&2; fi\n  done\n  exit 255\nfi\ncat >/dev/null\n'):
+     return real_popen(args, *a, **kw)
+   if (target.endswith('test_bootstrap_vps.py') and isinstance(args, list)
+       and args == ['bash', str(ROOT/'tools/bootstrap_vps.sh')]):
+    import ast
+    env = kw.get('env', {})
+    directory = Path(env.get('PATH', '').split(os.pathsep)[0]).resolve()
+    expected = next(ast.literal_eval(node.value) for node in ast.parse((ROOT/'tests/test_bootstrap_vps.py').read_text()).body
+                    if isinstance(node, ast.Assign) and any(isinstance(n, ast.Name) and n.id == 'DOCKER_STUB' for n in node.targets))
+    if (directory.is_relative_to(Path(home).resolve())
+        and env.get('ROOT') == str(directory/'isolated')
+        and env.get('BOOTSTRAP_TEST_LOG') == str(directory/'log')
+        and (directory/'docker').read_text() == expected):
      return real_popen(args, *a, **kw)
    return deny()
   stack.enter_context(patch.object(subprocess,'Popen',guarded_popen))

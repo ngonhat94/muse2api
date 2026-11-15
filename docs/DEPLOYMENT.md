@@ -116,48 +116,41 @@ alone is **not** a complete recovery backup. No backup has been taken by this wo
 
 ## Manual bootstrap on VPS — isolated new state only
 
-These are operator instructions, **not normal deployment steps**. They do not
-start the production app. Select a reviewed image built from this checkout and
-loaded on the VPS by a trusted operator (`IMAGE` below is its sha256 image ID).
-Do not use the old upstream `muse2api:latest` image. Verify its revision privately.
-Do not paste generated secrets into chat or GitHub logs. Run as the deployment
-account; never run with `set -x`. First check the selected path does not exist:
+These are operator instructions, **not normal deployment steps**. Run the reviewed
+standalone file [`tools/bootstrap_vps.sh`](../tools/bootstrap_vps.sh) once, only
+when authorizing fresh isolated replacement and exact-ID legacy cutover. Upload
+that file to the VPS; **do not copy/paste or split its embedded Python/heredoc**.
+It needs only Bash, Python 3, Docker access and an already built/loaded reviewed
+custom image `muse2api:bootstrap`. It does not build/download an image. Never use
+the old upstream `muse2api:latest`; review the custom image revision privately.
+
+Lưu file đã tải lên thành `~/bootstrap-muse-vps.sh` (hoặc chọn đường dẫn riêng),
+rồi chạy một lệnh, không `source`, không dán nội dung script:
 
 ```bash
-set -eu
-umask 077
-ROOT=/data/home/muse2api-production  # choose/confirm; NOT the old repo
-# IMAGE=sha256:... # reviewed new image ID; set explicitly before proceeding
-: "${IMAGE:?set reviewed immutable new image ID}"
-test ! -e "$ROOT"
-mkdir -m 700 "$ROOT"
-mkdir -m 700 "$ROOT/data" "$ROOT/profiles" "$ROOT/config" "$ROOT/incoming"
-# Network disabled, one-shot library calls only, no server/browser startup.
-docker run --rm -i --network none --user "$(id -u):$(id -g)" \
-  --mount "type=bind,src=$ROOT/config,dst=/bootstrap" \
-  --mount "type=bind,src=$ROOT/data,dst=/bootstrap/data" \
-  --env MUSE2API_HOME=/bootstrap --entrypoint python "$IMAGE" - <<'PY'
-import base64, os, secrets
-from pathlib import Path
-os.umask(0o077)
-base = Path('/bootstrap')
-# Exclusive create: never replace existing credentials.
-with (base / '.env').open('x') as output:
-    output.write('MUSE2API_KEY=' + secrets.token_urlsafe(48) + '\n')
-    output.write('MUSE2API_COOKIE_KEY=' + base64.urlsafe_b64encode(os.urandom(32)).decode() + '\n')
-    output.write('MUSE2API_PUBLIC_BASE=https://muse.dntrip.xyz\n')
-from config import CFG
-from authority import AdminAuthority
-from idempotency import GenerationLedger
-AdminAuthority(str(base / 'data/admin-authority.json'), CFG.api_key)
-GenerationLedger(str(base / 'data/generation-ledger.json'), initialize=True)
-PY
-# Approval for this prepared isolated state, NOT a bootstrap flag for normal runs:
-printf '%s\n' muse2api-storage-v1 > "$ROOT/DEPLOY_READY"
-# Only when authorizing this specific legacy container's replacement:
-docker inspect --format '{{.Id}}' muse2api > "$ROOT/LEGACY_CUTOVER_APPROVED"
-chmod 600 "$ROOT/DEPLOY_READY" "$ROOT/LEGACY_CUTOVER_APPROVED"
+bash ~/bootstrap-muse-vps.sh
 ```
+
+Defaults: `ROOT=/data/home/muse2api-production`, `IMAGE=muse2api:bootstrap`.
+An operator can explicitly override these environment variables. Run as the
+same deployment account, never with shell tracing. The parent directory must
+exist. The script checks real current state on every run: ROOT may be absent,
+or contain only the four owner-owned mode-700 **empty** directories `config`,
+`data`, `profiles`, `incoming` (missing directories are created). Any other file,
+key, ledger, marker, symlink, unexpected owner or permissions fails closed without
+overwriting/chmod/chown/deleting existing state. An interrupted initialization
+requires private offline reconciliation, not a reset/retry flag.
+
+Before writing keys it requires the full ID of existing container `muse2api`,
+resolves the reviewed image to an immutable ID and runs an offline module compile
+and library-import probe. It generates a Fernet key and admin key only inside
+the one-shot network-disabled container, writes `.env` exclusively, then explicitly
+initializes authority and encrypted ledger without importing the server/config
+or launching browsers. All outputs are checked before exclusive cutover/ready
+approvals; only full success prints `BOOTSTRAP COMPLETE`. Docker error output is
+not echoed because it might expose sensitive values. A retained
+`BOOTSTRAP_IN_PROGRESS` sentinel blocks reruns, including after successful setup.
+No old container stop/removal, proxy edits or production-file cleanup occurs.
 
 If bootstrap fails, leave it stopped and investigate privately; never silently
 retry initialization or delete markers. The isolated new deployment starts empty:
@@ -200,7 +193,24 @@ No ledger snapshot restoration, cleanup, pruning, migration or key generation is
 performed by deploy. Legacy rollback is always manual (stop new first, then
 restore old restart policy/start if explicitly approved).
 
-Uploaded revision directories/images are retained, not pruned. A retry of the same
-SHA refuses an existing upload directory; inspect interrupted state privately
-and prepare a new reviewed commit rather than deleting production files blindly.
+Uploads use independent `incoming/<revision>-<random-attempt>` directories, even
+when the same SHA is retried: `docker build --pull` can produce a different image
+ID for that SHA. Directory creation is exclusive and all streamed files use shell
+noclobber; existing files/symlinks fail closed. Interrupted attempts and historical
+revision directories/images remain untouched, not deleted, overwritten or pruned.
+The remote deploy accepts an optional fifth attempt argument; the original four
+arguments still select `incoming/<revision>`. Attempts must belong to the exact
+revision. A private no-follow file lock serializes Docker load/identity checks,
+container replacement, health checks and rollback across independent attempts.
+Image ID, OCI revision and storage-contract validation remain mandatory before
+stopping a runtime; a new attempt is not permission to bypass identity checks.
+
+CI failures now name the transport stage (preflight, allocate-upload, fixed file
+upload or remote-deploy) without publishing raw SSH stderr. Recognized remote
+Docker failures name their command stage, including `image-load` and Compose
+stop/up, and distinguish the bounded 180-second timeout. For `image-load`, inspect
+Docker daemon health, disk space and the uploaded archive **privately**; do not
+print configuration, tokens or raw Docker stderr into Actions. A failed load
+occurs before runtime replacement. Do not treat a prior successful manual load as
+proof of why a later Actions run failed: inspect its sanitized stage diagnostic.
 No frontend job/build/signing is enabled.

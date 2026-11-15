@@ -44,20 +44,37 @@ unset VPS_SSH_KEY VPS_KNOWN_HOSTS
 run_ssh() {
   local status=0 line
   ssh "${options[@]}" "$target" "$@" 2> "$keydir/stderr" || status=$?
-  # OpenSSH errors may include the login name; never publish a bearer token.
-  while IFS= read -r line || [[ -n $line ]]; do
-    printf '%s\n' "${line//"$VPS_USER"/[REDACTED]}" >&2
-  done < "$keydir/stderr"
+  # Neither SSH nor arbitrary remote stderr is safe to publish. Only recognize
+  # our fixed remote command-stage diagnostics; never echo the original line.
+  if (( status != 0 )); then
+    while IFS= read -r line || [[ -n $line ]]; do
+      for stage in image-load image-inspect docker-query legacy-restart-policy legacy-stop compose-stop compose-up; do
+        case "$line" in
+          "Deployment failed: $stage: timed out after 180s;"*)
+            printf 'Deployment stage %s timed out after 180s; inspect VPS privately.\n' "$stage" >&2 ;;
+          "Deployment failed: $stage: command failed;"*|"Deployment failed: $stage: command unavailable;"*)
+            printf 'Deployment stage %s command failed; inspect VPS privately.\n' "$stage" >&2 ;;
+        esac
+      done
+    done < "$keydir/stderr"
+    printf 'SSH stage %s failed (exit %s); stderr [REDACTED]. Check pinned SSH access and remote state privately.\n' "${ssh_stage:-unknown}" "$status" >&2
+  fi
   return "$status"
 }
 # Preflight does not create directories or run Docker. The operator owns bootstrap.
+ssh_stage=preflight
 run_ssh "python3 - '$root'" < tools/deploy_preflight.py
-# A unique immutable revision directory; existing release directories fail closed.
-run_ssh "umask 077; mkdir '$root/incoming/$revision'"
+# Independent attempts: --pull may produce a different image for the same SHA.
+# Never reuse, remove or overwrite an interrupted or previously deployed upload.
+attempt="$revision-$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+ssh_stage=allocate-upload
+run_ssh "umask 077; mkdir '$root/incoming/$attempt'"
 # Stream fixed filenames through stdin: no scp/rsync remote quoting ambiguity.
 for pair in 'deploy-image.tar:image.tar' 'deploy/compose.production.yml:compose.yml' 'tools/deploy_remote.py:deploy_remote.py'; do
   local_file=${pair%%:*}
   remote_file=${pair#*:}
-  run_ssh "umask 077; cat > '$root/incoming/$revision/$remote_file'" < "$local_file"
+  ssh_stage="upload-$remote_file"
+  run_ssh "umask 077; set -C; cat > '$root/incoming/$attempt/$remote_file'" < "$local_file"
 done
-run_ssh "python3 '$root/incoming/$revision/deploy_remote.py' '$root' '$revision' '$image_id' '$version'"
+ssh_stage=remote-deploy
+run_ssh "python3 '$root/incoming/$attempt/deploy_remote.py' '$root' '$revision' '$image_id' '$version' '$attempt'"

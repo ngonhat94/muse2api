@@ -30,6 +30,35 @@ def synthetic_deploy_path(module, root):
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Exact, offline-only SSH replacement: execute only upload mkdir/cat commands,
+# mapping the fixed synthetic remote root into this test's private scratch.
+UPLOAD_SSH_STUB = '''#!/usr/bin/env python3
+import os, pathlib, subprocess, sys
+command = sys.argv[-1]
+root = pathlib.Path(os.environ['SSH_UPLOAD_ROOT'])
+if command.startswith('python3 '):
+    sys.stdin.buffer.read()
+    if not command.startswith('python3 - ') and os.environ.get('SSH_REMOTE_FAIL'):
+        print('Deployment failed: image-load: timed out after 180s; secret-config', file=sys.stderr)
+        print('arbitrary-secret-stderr', file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+command = command.replace('/data/home/muse2api-production', str(root))
+if 'cat > ' in command and os.environ.get('SSH_RACE'):
+    destination = pathlib.Path(command.split("'", 2)[1])
+    if os.environ['SSH_RACE'] == 'symlink':
+        destination.symlink_to(root / 'protected')
+    else:
+        destination.write_bytes(b'competing-partial')
+if 'cat > ' in command and os.environ.get('SSH_PARTIAL') == '1':
+    destination = command.split("'", 2)[1]
+    pathlib.Path(destination).write_bytes(b'partial-upload')
+    sys.stdin.buffer.read()
+    sys.exit(23)
+sys.exit(subprocess.run(['bash', '-c', command]).returncode)
+'''
+
+
 
 class DeployTests(unittest.TestCase):
     def load(self):
@@ -58,6 +87,127 @@ class DeployTests(unittest.TestCase):
             self.assertIs(module.re, original_re)
             with self.assertRaisesRegex(ValueError, 'unsafe deploy path'):
                 module.prepare(root)
+
+    def test_attempt_must_belong_to_exact_revision(self):
+        module = self.load()
+        with patch.object(module, 'prepare') as prepare:
+            for attempt in ('../escape', 'b'*40 + '-' + 'c'*32, 'a'*40 + '-bad'):
+                with self.subTest(attempt=attempt), self.assertRaisesRegex(ValueError, 'attempt'):
+                    module.deploy(Path('/synthetic'), 'a'*40, 'sha256:'+'b'*64, '1.6.10', attempt)
+            prepare.assert_not_called()
+
+    def test_command_errors_are_stage_specific_and_never_expose_output(self):
+        module = self.load()
+        for failure in (subprocess.CalledProcessError(7, ['secret-command'], output='secret-config', stderr='secret-token'),
+                        subprocess.TimeoutExpired(['secret-command'], 180, output='secret-config', stderr='secret-token'),
+                        FileNotFoundError('secret-path')):
+            with self.subTest(error=type(failure).__name__), patch.object(module.subprocess, 'run', side_effect=failure):
+                with self.assertRaisesRegex(module.DeploymentError, 'image-load') as caught:
+                    module.run('docker', 'load', stage='image-load')
+                self.assertNotIn('secret', str(caught.exception))
+                self.assertIn('disk space', str(caught.exception))
+
+    def test_remote_lock_serializes_attempts_before_docker(self):
+        import threading
+        module = self.load()
+        entered, release, second_entered = threading.Event(), threading.Event(), threading.Event()
+        failures = []
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            def fake(*args, **kwargs):
+                if threading.current_thread().name == 'first-deploy':
+                    entered.set()
+                    if not release.wait(5):
+                        raise AssertionError('test did not release first deploy')
+                else:
+                    second_entered.set()
+                raise ValueError('synthetic stop before Docker')
+            def worker():
+                try:
+                    module.deploy(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10')
+                except ValueError as error:
+                    if str(error) != 'synthetic stop before Docker':
+                        failures.append(error)
+                except Exception as error:
+                    failures.append(error)
+            first = threading.Thread(target=worker, name='first-deploy')
+            second = threading.Thread(target=worker, name='second-deploy')
+            with synthetic_deploy_path(module, root), patch.object(module, 'run', side_effect=fake):
+                first.start()
+                try:
+                    self.assertTrue(entered.wait(5))
+                    second.start()
+                    self.assertFalse(second_entered.wait(0.1), 'second deployment bypassed remote lock')
+                finally:
+                    release.set()
+                    first.join(5)
+                    if second.ident:
+                        second.join(5)
+            self.assertFalse(first.is_alive() or second.is_alive())
+            self.assertTrue(second_entered.is_set())
+            self.assertEqual(failures, [])
+
+    def test_lock_symlink_fails_without_touching_target(self):
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            target = root / 'preserved'
+            target.write_text('do not touch')
+            (root / '.deploy.lock').symlink_to(target)
+            with synthetic_deploy_path(module, root), patch.object(module, 'run') as run:
+                with self.assertRaises(OSError):
+                    module.deploy(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10')
+                run.assert_not_called()
+            self.assertEqual(target.read_text(), 'do not touch')
+
+    def test_missing_or_symlink_archive_stops_before_image_load(self):
+        module = self.load()
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink), tempfile.TemporaryDirectory() as tmp:
+                root = self.fixture(tmp)
+                archive = root / 'incoming' / ('a'*40) / 'image.tar'
+                archive.unlink()
+                if symlink:
+                    archive.symlink_to(root / 'data/generation-ledger.json')
+                with synthetic_deploy_path(module, root), patch.object(module, 'run', return_value='') as run:
+                    with self.assertRaises((ValueError, FileNotFoundError)):
+                        module.deploy(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10')
+                    self.assertEqual(run.call_count, 1)  # legacy query only
+                self.assertEqual((root / 'data/generation-ledger.json').read_text(), '{}')
+
+    def test_image_load_failure_reports_stage_before_stopping_runtime(self):
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            def command(args, **kwargs):
+                if args[1] == 'ps':
+                    return subprocess.CompletedProcess(args, 0, stdout='')
+                raise subprocess.CalledProcessError(1, args, stderr='secret-config')
+            with synthetic_deploy_path(module, root), patch.object(module.subprocess, 'run', side_effect=command) as run:
+                with self.assertRaisesRegex(module.DeploymentError, 'image-load') as caught:
+                    module.deploy(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10')
+                self.assertNotIn('secret', str(caught.exception))
+                self.assertEqual(run.call_count, 2)
+                self.assertFalse(any('stop' in c.args[0] for c in run.call_args_list))
+
+    def test_image_identity_mismatch_never_stops_runtime(self):
+        module = self.load()
+        for field in ('Id', 'revision', 'contract'):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                root = self.fixture(tmp)
+                image = {'Id': 'sha256:'+'b'*64, 'Config': {'Labels': {
+                    'org.opencontainers.image.revision': 'a'*40,
+                    'org.muse2api.storage-contract': module.CONTRACT}}}
+                if field == 'Id':
+                    image['Id'] = 'sha256:'+'c'*64
+                else:
+                    key = 'org.opencontainers.image.revision' if field == 'revision' else 'org.muse2api.storage-contract'
+                    image['Config']['Labels'][key] = 'mismatch'
+                with synthetic_deploy_path(module, root), patch.object(module, 'run', side_effect=['', '', json.dumps([image])]) as run:
+                    with self.assertRaisesRegex(ValueError, 'identity/contract'):
+                        module.deploy(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10')
+                    self.assertFalse(any('stop' in call.args for call in run.call_args_list))
+                self.assertEqual((root / 'incoming' / ('a'*40) / 'image.tar').read_text(), '{}')
 
     def test_unprepared_target_fails_before_docker(self):
         module = self.load()
@@ -126,7 +276,7 @@ class DeployTests(unittest.TestCase):
             self.assertIn('GlobalKnownHostsFile=/dev/null', log)
             self.assertNotIn('StrictHostKeyChecking=no', log)
             self.assertNotIn('ssh-keyscan', log)
-            self.assertIn('/incoming/'+'a'*40+'/image.tar', log)
+            self.assertRegex(log, '/incoming/'+'a'*40+'-[a-f0-9]{32}/image.tar')
             self.assertFalse(list(tmp.glob('muse-deploy-*')))
 
     def token_transport(self, **changes):
@@ -155,6 +305,72 @@ class DeployTests(unittest.TestCase):
                 self.assertNotIn(env['VPS_USER'], result.stdout + result.stderr)
             self.assertFalse(list(tmp.glob('muse-deploy-*')))
             return result, log
+
+    def test_real_upload_retries_preserve_interrupted_and_existing_releases(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP')) as directory:
+            tmp = Path(directory).resolve()
+            remote = tmp / 'remote'
+            incoming = remote / 'incoming'
+            incoming.mkdir(parents=True)
+            original = incoming / ('a'*40)
+            original.mkdir()
+            (original / 'image.tar').write_bytes(b'original-release')
+            stub = tmp / 'ssh'
+            stub.write_text(UPLOAD_SSH_STUB)
+            stub.chmod(0o700)
+            work = tmp / 'work'
+            (work / 'tools').mkdir(parents=True)
+            (work / 'deploy').mkdir()
+            for name in ('tools/deploy_preflight.py', 'tools/deploy_remote.py',
+                         'deploy/compose.production.yml', 'deploy-image.tar'):
+                (work / name).write_text('synthetic')
+            env = dict(os.environ, VPS_DEPLOY_PATH='/data/home/muse2api-production',
+                       VPS_HOST='example.invalid', VPS_PORT='22', VPS_USER='user', VPS_SSH_MODE='key',
+                       VPS_KNOWN_HOSTS='synthetic', VPS_SSH_KEY='synthetic', RUNNER_TEMP=str(tmp),
+                       SSH_UPLOAD_ROOT=str(remote), SSH_PARTIAL='1', PATH=str(tmp)+os.pathsep+os.environ['PATH'])
+            args = ['bash', str(ROOT/'tools/deploy_ssh.sh'), 'a'*40, 'sha256:'+'b'*64, '1.6.10']
+            failed = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
+            self.assertEqual(failed.returncode, 23, failed.stderr)
+            self.assertIn('upload-image.tar', failed.stderr)
+            partial = next(p for p in incoming.iterdir() if p != original)
+            self.assertEqual((partial / 'image.tar').read_bytes(), b'partial-upload')
+            env['SSH_PARTIAL'] = '0'
+            for image in ('b', 'c'):
+                args[3] = 'sha256:' + image*64
+                result = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(list(incoming.iterdir())), 4)
+            self.assertEqual((partial / 'image.tar').read_bytes(), b'partial-upload')
+            self.assertEqual((original / 'image.tar').read_bytes(), b'original-release')
+            protected = remote / 'protected'
+            protected.write_bytes(b'preserved')
+            for race in ('file', 'symlink'):
+                env['SSH_RACE'] = race
+                result = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0, 'must refuse competing upload target')
+                self.assertEqual(protected.read_bytes(), b'preserved')
+            archives = [p / 'image.tar' for p in incoming.iterdir()]
+            self.assertEqual(sum(p.is_symlink() for p in archives), 1)
+            self.assertTrue(any(p.read_bytes() == b'competing-partial' for p in archives))
+            env.pop('SSH_RACE')
+            env['SSH_REMOTE_FAIL'] = '1'
+            result = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('image-load timed out after 180s', result.stderr)
+            self.assertNotIn('secret', result.stdout + result.stderr)
+            self.assertFalse(list(tmp.glob('muse-deploy-*')))
+
+    def test_repeated_transport_uses_distinct_no_clobber_attempts(self):
+        first, log1 = self.token_transport()
+        second, log2 = self.token_transport()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        mkdir1 = next(line for line in log1.splitlines() if 'mkdir ' in line)
+        mkdir2 = next(line for line in log2.splitlines() if 'mkdir ' in line)
+        self.assertNotEqual(mkdir1, mkdir2, 'reruns must not reuse immutable SHA directory')
+        for log in (log1, log2):
+            self.assertEqual(log.count('set -C;'), 3, 'all streamed files must use noclobber')
+            self.assertNotIn('rm ', log)
 
     def test_token_mode_without_key_pins_gateway_and_never_offers_client_keys(self):
         result, log = self.token_transport()
@@ -213,7 +429,8 @@ class DeployTests(unittest.TestCase):
             (root / name).mkdir(mode=0o700)
         for name in ('data/generation-ledger.json', 'data/generation-ledger.json.initialized',
                      'data/admin-authority.json', 'data/admin-authority.json.initialized',
-                     'incoming/' + 'a'*40 + '/compose.yml'):
+                     'incoming/' + 'a'*40 + '/compose.yml',
+                     'incoming/' + 'a'*40 + '/image.tar'):
             (root / name).write_text('{}')
             (root / name).chmod(0o600)
         for name, value in [('DEPLOY_READY', 'muse2api-storage-v1'),
@@ -222,7 +439,7 @@ class DeployTests(unittest.TestCase):
             (root / name).chmod(0o600)
         return root
 
-    def exercise(self, fail_new=False, rollback=False, legacy=False):
+    def exercise(self, fail_new=False, rollback=False, legacy=False, attempt=None):
         module = self.load()
         new_id, old_id = 'sha256:'+'b'*64, 'sha256:'+'c'*64
         calls = []
@@ -230,13 +447,15 @@ class DeployTests(unittest.TestCase):
         running = [True]
         with tempfile.TemporaryDirectory() as tmp:
             root = self.fixture(tmp)
+            if attempt:
+                (root / 'incoming' / ('a'*40)).rename(root / 'incoming' / attempt)
             if legacy:
                 (root / 'LEGACY_CUTOVER_APPROVED').write_text('d'*64)
                 (root / 'LEGACY_CUTOVER_APPROVED').chmod(0o600)
             if rollback:
                 (root / 'ROLLBACK_COMPATIBLE').write_text(module.CONTRACT)
                 (root / 'ROLLBACK_COMPATIBLE').chmod(0o600)
-            def fake(*args):
+            def fake(*args, **kwargs):
                 calls.append(list(args))
                 if args[1:3] == ('image', 'inspect'):
                     return json.dumps([{'Id': args[3], 'Config': {'Labels': {
@@ -263,9 +482,9 @@ class DeployTests(unittest.TestCase):
             with synthetic_deploy_path(module, root), patch.object(module, 'run', side_effect=fake), patch.object(module.subprocess, 'run', side_effect=compose), patch.object(module.time, 'sleep'):
                 if fail_new:
                     with self.assertRaises(RuntimeError):
-                        module.deploy(root, 'a'*40, new_id, '1.6.10')
+                        module.deploy(root, 'a'*40, new_id, '1.6.10', attempt)
                 else:
-                    module.deploy(root, 'a'*40, new_id, '1.6.10')
+                    module.deploy(root, 'a'*40, new_id, '1.6.10', attempt)
             self.assertEqual((root / 'data/generation-ledger.json').read_text(), '{}')
         return calls, active[0]
 
@@ -276,6 +495,12 @@ class DeployTests(unittest.TestCase):
         self.assertLess(stop, start)
         self.assertTrue(any(c[1:3] == ['update', '--restart=no'] for c in calls))
         self.assertFalse(any('rm' in c or 'prune' in c or 'down' in c for c in calls))
+
+    def test_explicit_attempt_loads_only_its_archive(self):
+        attempt = 'a'*40 + '-' + 'd'*32
+        calls, _ = self.exercise(attempt=attempt)
+        load = next(c for c in calls if 'load' in c)
+        self.assertTrue(load[-1].endswith('/incoming/' + attempt + '/image.tar'))
 
     def test_production_mounts_rotation_and_network_contract(self):
         compose = (ROOT/'deploy/compose.production.yml').read_text()

@@ -14,9 +14,21 @@ CONTAINER = 'muse2api-production'
 CONTRACT = 'muse2api-storage-v1'
 
 
-def run(*args):
-    return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, timeout=180).stdout.strip()
+class DeploymentError(RuntimeError):
+    """Only fixed, non-sensitive stage diagnostics may cross the CI boundary."""
+
+
+def run(*args, stage='docker-query', env=None):
+    try:
+        return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=180, env=env).stdout.strip()
+    except (subprocess.SubprocessError, OSError) as error:
+        reason = ('timed out after 180s' if isinstance(error, subprocess.TimeoutExpired)
+                  else 'command failed' if isinstance(error, subprocess.CalledProcessError)
+                  else 'command unavailable')
+        hint = ('check Docker daemon, disk space and uploaded archive privately; runtime not replaced'
+                if stage == 'image-load' else 'inspect Docker and deployment state privately')
+        raise DeploymentError(stage + ': ' + reason + '; ' + hint) from None
 
 
 def private(path, directory=False, runtime_data=False):
@@ -66,25 +78,33 @@ def legacy_guard(root):
     return legacy
 
 
-def deploy(root, revision, image_id, version):
+def deploy(root, revision, image_id, version, attempt=None):
     if not re.fullmatch('[0-9a-f]{40}', revision) or not re.fullmatch('sha256:[0-9a-f]{64}', image_id):
         raise ValueError('invalid immutable release identifier')
     if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
         raise ValueError('invalid version')
+    if attempt is not None and not re.fullmatch(revision + '-[a-f0-9]{32}', attempt):
+        raise ValueError('invalid upload attempt for revision')
     prepare(root)
-    with (root / '.deploy.lock').open('a') as lock:
+    # O_NOFOLLOW prevents an existing lock symlink from redirecting writes.
+    fd = os.open(root / '.deploy.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'r+') as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_nlink != 1:
+            raise ValueError('unsafe deployment lock')
         fcntl.flock(lock, fcntl.LOCK_EX)
         prepare(root)
         legacy = legacy_guard(root)
         if (root / '.git').exists() or (root / 'docker-compose.yml').exists():
             raise ValueError('legacy repository cannot be used as deploy root')
-        release = root / 'incoming' / revision
+        release = root / 'incoming' / (attempt or revision)
         private(release, directory=True)
         compose = release / 'compose.yml'
         private(compose)
+        private(release / 'image.tar')
         # Loading does not start an application. Verify exact content identity.
-        run('docker', 'load', '--input', str(release / 'image.tar'))
-        new = json.loads(run('docker', 'image', 'inspect', image_id))[0]
+        run('docker', 'load', '--input', str(release / 'image.tar'), stage='image-load')
+        new = json.loads(run('docker', 'image', 'inspect', image_id, stage='image-inspect'))[0]
         labels = new['Config'].get('Labels') or {}
         if new['Id'] != image_id or labels.get('org.opencontainers.image.revision') != revision or labels.get('org.muse2api.storage-contract') != CONTRACT:
             raise ValueError('image identity/contract mismatch')
@@ -100,8 +120,13 @@ def deploy(root, revision, image_id, version):
         command = ['docker', 'compose', '--project-name', 'muse2api-production', '--project-directory', str(root), '-f', str(compose)]
 
         def compose_run(*args):
-            subprocess.run(command + list(args), env=env, check=True, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE, timeout=180)
+            # Keep subprocess execution here for the synthetic compose boundary.
+            try:
+                subprocess.run(command + list(args), env=env, check=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=180)
+            except (subprocess.SubprocessError, OSError) as error:
+                reason = 'timed out after 180s' if isinstance(error, subprocess.TimeoutExpired) else 'command failed'
+                raise DeploymentError('compose-' + args[0] + ': ' + reason + '; inspect runtime privately') from None
 
         def healthy(expected_id, expected_version=None):
             probe = ('import json,urllib.request; '
@@ -113,7 +138,7 @@ def deploy(root, revision, image_id, version):
                     if state['Image'] == expected_id and state['State']['Running']:
                         run('docker', 'exec', CONTAINER, 'python', '-c', probe)
                         return True
-                except (subprocess.SubprocessError, ValueError, KeyError):
+                except (subprocess.SubprocessError, DeploymentError, ValueError, KeyError):
                     pass
                 time.sleep(2)
             return False
@@ -122,8 +147,8 @@ def deploy(root, revision, image_id, version):
         if legacy:
             # Preserve the legacy container and mounts, but prevent reboot from
             # starting a competing worker. Legacy rollback remains manual.
-            run('docker', 'update', '--restart=no', legacy)
-            run('docker', 'stop', '--time', '60', legacy)
+            run('docker', 'update', '--restart=no', legacy, stage='legacy-restart-policy')
+            run('docker', 'stop', '--time', '60', legacy, stage='legacy-stop')
             legacy_state = json.loads(run('docker', 'inspect', legacy))[0]
             if legacy_state['State']['Running']:
                 raise RuntimeError('legacy runtime still running')
@@ -136,7 +161,7 @@ def deploy(root, revision, image_id, version):
             compose_run('up', '--detach', '--no-build', '--pull', 'never', '--scale', 'muse2api=1', 'muse2api')
             if not healthy(image_id, version):
                 raise RuntimeError('new image health/version verification failed')
-        except Exception:
+        except Exception as failure:
             # Never restore a ledger snapshot: that could duplicate upstream work.
             compose_run('stop', '--timeout', '60', 'muse2api')
             policy = root / 'ROLLBACK_COMPATIBLE'
@@ -152,16 +177,18 @@ def deploy(root, revision, image_id, version):
                     compose_run('stop', '--timeout', '60', 'muse2api')
                     raise RuntimeError('rollback unhealthy; operator recovery required') from None
                 print('Previous image recovered; release FAILED. Data was not rolled back.', flush=True)
-            raise RuntimeError('deployment failed; inspect VPS privately; no data restored') from None
+            detail = str(failure) if isinstance(failure, DeploymentError) else 'health/version verification failed'
+            raise DeploymentError(detail + '; release FAILED; no data restored') from None
         print('Verified running image ' + image_id + ' revision ' + revision, flush=True)
 
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) != 5:
-            raise ValueError('expected path, revision, image ID, version')
+        if len(sys.argv) not in (5, 6):
+            raise ValueError('expected path, revision, image ID, version, optional attempt')
         deploy(Path(sys.argv[1]), *sys.argv[2:])
     except Exception as error:
         # Subprocess stderr may contain configuration; never print it to CI.
-        print('Deployment failed (' + type(error).__name__ + '); inspect VPS privately.', file=sys.stderr)
+        message = str(error) if isinstance(error, DeploymentError) else type(error).__name__ + '; inspect VPS privately'
+        print('Deployment failed: ' + message, file=sys.stderr)
         sys.exit(1)

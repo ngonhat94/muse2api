@@ -1,5 +1,38 @@
 # CI local verification evidence
 
+## Repeat-run deployment repair (local only)
+
+Inspected HEAD `c448fe1` with existing bootstrap/documentation/inventory edits;
+those changes are preserved. Source-grounded defect: the upload used exclusive
+`mkdir incoming/<SHA>`, so any earlier complete or interrupted attempt blocked a
+rerun. This does not establish the latest hosted failure's exact cause without
+its failing-step log. RED reproduced identical upload-directory commands for two
+same-SHA runs; the fixed transport uses random per-attempt paths and noclobber.
+
+- Guarded `tests/test_deploy.py`: **27 tests pass**. Coverage includes real local
+  Bash upload commands through an exact synthetic SSH stub: interrupted archive
+  retained, successful same-SHA retries with different expected image IDs, old
+  SHA directory preserved, competing partial-file/symlink writes refused. No
+  external SSH/Docker is run. Remote tests prove exact attempt/revision binding,
+  backward-compatible four-argument deploy, no-follow private lock rejection and
+  two-thread serialization, missing/symlink archive rejection, immutable image
+  ID/revision/contract failures before stop, and safe image-load failure stages.
+- Full scratch root-dependency Python venv `tools/ci_backend.py`: **exit 0,
+  42 guarded scripts; 6 explicit browser/socket exclusions**. Evidence:
+  `/Users/nhatngo/.hermes/cache/scratch/deploy-fix-backend.log`.
+- All **5 Node scripts**, actionlint (`-shellcheck=`; optional shellcheck not
+  installed), `bash -n tools/deploy_ssh.sh tools/bootstrap_vps.sh` and
+  `git diff --check`: **exit 0**.
+- Command failures/timeouts use fixed sanitized stages; raw subprocess/SSH
+  stderr, configuration and token-bearing command strings are not published.
+  Docker load retains its 180-second timeout; a failed load does not stop the
+  runtime. No destructive retry cleanup or bootstrap behavior was added.
+- No network, live SSH/VPS/Muse, secret lookup, production change, global install,
+  commit or push was performed. Docker image build and hosted Actions deploy are
+  not verified by these local regressions. Publishing the changes and a new
+  authorized push-main run remain pending; rerunning an old revision cannot load
+  these unpushed scripts.
+
 ## InstaBox token transport (local only)
 
 Starting checkout HEAD: `3668e70` (clean); the earlier async-image fix is retained.
@@ -78,6 +111,21 @@ CI.md; synthetic fixtures now also work in dotted/spaced scratch paths.
 Hosted Linux rerun and parent
 independent verification remain pending. No live Muse/app, network, Docker,
 SSH/deployment, credential access, global install, commit or push was performed.
+
+## Standalone isolated bootstrap verification (2026-11-15)
+
+`tools/bootstrap_vps.sh` replaces fragile multiline terminal initialization.
+RED detected the missing script; real embedded-code execution then detected a
+missing cookie-key environment assignment before explicit ledger creation.
+Both corrected and verified. `tests/test_bootstrap_vps.py`: **9 tests pass** under
+the guarded offline runner, including synthetic Docker sequencing, failed init
+without success/approvals, partial-key/marker rejection, empty-directory reuse,
+unsafe permission/symlink refusal, embedded Python compilation and actual
+synthetic authority/encrypted-ledger initialization in disposable scratch.
+`bash -n tools/bootstrap_vps.sh` passes. Inventory and narrow exact-stub subprocess
+allowance updated; full `tools/ci_backend.py` exits 0: **42 guarded scripts,
+6 explicit exclusions**. No live Docker, SSH, VPS, Muse, production credentials,
+commit or push. This is not proof of a running image/VPS deployment.
 
 ## Auto-deployment revision (2026-11-15)
 
