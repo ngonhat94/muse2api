@@ -39,9 +39,13 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
    if (target.endswith('test_deploy.py') and isinstance(args, list)
        and args[:2] == ['bash', str(ROOT/'tools/deploy_ssh.sh')]
        and kw.get('env', {}).get('VPS_HOST') == 'example.invalid'
-       and kw.get('env', {}).get('VPS_SSH_KEY') == 'synthetic'):
+       and kw.get('env', {}).get('VPS_KNOWN_HOSTS') in ('synthetic', '')
+       and kw.get('env', {}).get('VPS_SSH_KEY') in ('synthetic', '')
+       and kw.get('env', {}).get('VPS_DEPLOY_PATH') == '/data/home/muse2api-production'):
     mock = Path(kw['env']['PATH'].split(os.pathsep)[0]) / 'ssh'
-    if mock.read_text() == '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\ncat >/dev/null\n':
+    if mock.read_text() in (
+        '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\ncat >/dev/null\n',
+        '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\nif [[ ${SSH_MOCK_FAIL:-} == 1 ]]; then\n  for arg in "$@"; do\n    if [[ $arg == */config ]]; then cat "$arg" >&2; fi\n  done\n  exit 255\nfi\ncat >/dev/null\n'):
      return real_popen(args, *a, **kw)
    return deny()
   stack.enter_context(patch.object(subprocess,'Popen',guarded_popen))

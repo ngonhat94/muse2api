@@ -1,5 +1,28 @@
 # CI local verification evidence
 
+## InstaBox token transport (local only)
+
+Starting checkout HEAD: `3668e70` (clean); the earlier async-image fix is retained.
+Regression RED: `python3 tests/test_deploy.py` ran 15 tests and failed exactly on
+missing token-mode keyless support and unknown-mode acceptance. After transport
+implementation, guarded deployment tests pass **17/17**, including safe token
+syntax, required pins, default key requirement, ignored stale key in token mode,
+strict SSH argv, stderr token redaction, preserved exit 255 and private-file
+cleanup. SSH is an exact local synthetic stub, never an external connection.
+
+- Scratch root-dependency `ci-clean-venv` full `tools/ci_backend.py`: **exit 0,
+  41 guarded scripts, 6 explicit exclusions**. Evidence:
+  `/Users/nhatngo/.hermes/cache/scratch/ci-instabox-backend.log`.
+- All **5 Node scripts**: exit 0. `bash -n tools/deploy_ssh.sh`,
+  `git diff --check`, actionlint 1.7.12 with `-shellcheck=`: exit 0.
+- Official InstaBox SSH guide and token API were read: token authentication uses
+  SSH `none`; token response includes `hostKeyFingerprint`. Deployment docs
+  distinguish the gateway host CA/raw key from the guest's unrelated sshd key.
+- Docker remains unavailable in this environment; no image-build success claimed.
+  No real SSH token, external SSH/scan, Muse request, private data, secret/settings
+  change, commit/stage/push or deployment was used/performed. No hosted run URL.
+
+
 ## Async-image runner timing fix (2026-11-15)
 
 Investigated clean HEAD `88be6b89521bdcee246312f3c97ebc6d70486b41`.

@@ -107,7 +107,7 @@ class DeployTests(unittest.TestCase):
             stub.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\ncat >/dev/null\n')
             stub.chmod(0o700)
             env = dict(os.environ, VPS_DEPLOY_PATH='/data/home/muse2api-production',
-                       VPS_HOST='example.invalid', VPS_PORT='22', VPS_USER='user',
+                       VPS_HOST='example.invalid', VPS_PORT='22', VPS_USER='user', VPS_SSH_MODE='key',
                        VPS_KNOWN_HOSTS='synthetic', VPS_SSH_KEY='synthetic', RUNNER_TEMP=str(tmp),
                        SSH_MOCK_LOG=str(tmp / 'commands'), PATH=str(tmp)+os.pathsep+os.environ['PATH'])
             # A synthetic payload is streamed, not a Docker image or application.
@@ -128,6 +128,83 @@ class DeployTests(unittest.TestCase):
             self.assertNotIn('ssh-keyscan', log)
             self.assertIn('/incoming/'+'a'*40+'/image.tar', log)
             self.assertFalse(list(tmp.glob('muse-deploy-*')))
+
+    def token_transport(self, **changes):
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory).resolve()
+            stub = tmp / 'ssh'
+            stub.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\nif [[ ${SSH_MOCK_FAIL:-} == 1 ]]; then\n  for arg in "$@"; do\n    if [[ $arg == */config ]]; then cat "$arg" >&2; fi\n  done\n  exit 255\nfi\ncat >/dev/null\n')
+            stub.chmod(0o700)
+            env = dict(os.environ, VPS_DEPLOY_PATH='/data/home/muse2api-production',
+                       VPS_HOST='example.invalid', VPS_PORT='2222',
+                       VPS_USER='ibssh_abcdefghijklmnopqrstuvwxyz', VPS_SSH_MODE='instabox-token',
+                       VPS_KNOWN_HOSTS='synthetic', VPS_SSH_KEY='', RUNNER_TEMP=str(tmp),
+                       SSH_MOCK_LOG=str(tmp / 'commands'), PATH=str(tmp)+os.pathsep+os.environ['PATH'])
+            env.update(changes)
+            work = tmp / 'work'
+            (work / 'tools').mkdir(parents=True)
+            (work / 'deploy').mkdir()
+            for name in ('tools/deploy_preflight.py', 'tools/deploy_remote.py',
+                         'deploy/compose.production.yml', 'deploy-image.tar'):
+                (work / name).write_text('synthetic')
+            result = subprocess.run(['bash', str(ROOT/'tools/deploy_ssh.sh'), 'a'*40,
+                                     'sha256:'+'b'*64, '1.6.10'], env=env, cwd=work,
+                                    capture_output=True, text=True)
+            log = (tmp / 'commands').read_text() if (tmp / 'commands').exists() else ''
+            if env['VPS_USER']:
+                self.assertNotIn(env['VPS_USER'], result.stdout + result.stderr)
+            self.assertFalse(list(tmp.glob('muse-deploy-*')))
+            return result, log
+
+    def test_token_mode_without_key_pins_gateway_and_never_offers_client_keys(self):
+        result, log = self.token_transport()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log.count('StrictHostKeyChecking=yes'), 6)
+        self.assertEqual(log.count('GlobalKnownHostsFile=/dev/null'), 6)
+        self.assertNotIn('StrictHostKeyChecking=no', log)
+        self.assertNotIn('ssh-keyscan', log)
+        self.assertIn('VPS_SSH_MODE: ${{ vars.VPS_SSH_MODE }}',
+                      (ROOT / '.github/workflows/ci.yml').read_text())
+        for option in ('BatchMode=yes', 'PubkeyAuthentication=no',
+                       'PasswordAuthentication=no', 'KbdInteractiveAuthentication=no'):
+            self.assertEqual(log.count(option), 6)
+        self.assertNotIn('IdentitiesOnly', log)
+        self.assertNotIn('\n-i\n', log)
+        self.assertNotIn('ibssh_abcdefghijklmnopqrstuvwxyz', log)
+
+    def test_token_mode_redacts_ssh_errors_and_preserves_failure_status(self):
+        result, log = self.token_transport(SSH_MOCK_FAIL='1')
+        self.assertEqual(result.returncode, 255)
+        self.assertIn('[REDACTED]', result.stderr)
+        self.assertEqual(log.count('StrictHostKeyChecking=yes'), 1)
+
+    def test_token_mode_accepts_safe_non_guessed_contract_and_ignores_key(self):
+        result, log = self.token_transport(VPS_USER='7Safe_Token.Contract-2', VPS_SSH_KEY='synthetic')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('\n-i\n', log)
+        self.assertNotIn('IdentitiesOnly', log)
+
+    def test_default_key_mode_still_requires_key(self):
+        result, log = self.token_transport(VPS_SSH_MODE='', VPS_USER='user')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('VPS_SSH_KEY', result.stderr)
+        self.assertEqual(log, '')
+
+    def test_unknown_mode_is_rejected_before_ssh(self):
+        result, log = self.token_transport(VPS_SSH_MODE='typo', VPS_SSH_KEY='synthetic')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('VPS_SSH_MODE', result.stderr)
+        self.assertEqual(log, '')
+
+    def test_token_mode_rejects_unsafe_values_and_requires_pin(self):
+        for token in ('', '-option', 'a@host', 'a b', 'a\nb', 'a;b', 'a$(id)', 'a/b', 'a'*257):
+            with self.subTest(token=repr(token)):
+                result, log = self.token_transport(VPS_USER=token)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(log, '')
+        result, log = self.token_transport(VPS_KNOWN_HOSTS='')
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(log, '')
 
     def fixture(self, tmp):
         root = Path(tmp).resolve()

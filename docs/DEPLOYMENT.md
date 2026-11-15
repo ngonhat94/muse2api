@@ -8,12 +8,82 @@ published separately; do not blanket-add unrelated checkout changes.
 
 ## Required GitHub configuration
 
-Repository secrets: `VPS_HOST`, `VPS_PORT`, `VPS_USER` (`user`), `VPS_SSH_KEY`,
-and **`VPS_KNOWN_HOSTS`**. The last secret is additional to the four already
-reported populated. Obtain the host public key/fingerprint using a trusted VPS
-console or provider channel. Compare the fingerprint out of band before saving
-a known_hosts line (`[host]:port` for nonstandard ports). `ssh-keyscan` output
-alone is not trust. The workflow never disables strict host verification.
+Choose the SSH transport explicitly in **Settings → Secrets and variables →
+Actions → Variables**. `VPS_SSH_MODE` defaults to `key` when absent/empty; the only
+other accepted value is `instabox-token`. Unknown values fail before SSH.
+
+| Setting | Direct SSH (`key`, default) | InstaBox (`instabox-token`) |
+| --- | --- | --- |
+| Variable `VPS_SSH_MODE` | `key` or unset | **`instabox-token`** |
+| Secret `VPS_HOST` | Direct SSH hostname | **`ssh.instabox.sh`** (use provider-issued endpoint) |
+| Secret `VPS_PORT` | Direct SSH port | **`2222`** (match provider command) |
+| Secret `VPS_USER` | Linux account, e.g. `user` | **Only the exact token before `@`**, not `i`, guest account, or full command |
+| Secret `VPS_SSH_KEY` | Required private client key | Not required; ignored even if an old value remains |
+| Secret `VPS_KNOWN_HOSTS` | Independently pinned direct SSH host | Independently pinned **gateway** identity for **`[ssh.instabox.sh]:2222`** |
+| Variable `VPS_DEPLOY_PATH` | Explicit prepared path below | Same; SSH transport does not prepare the guest |
+
+Never send the token/key in chat, put the token in Variables, or echo the SSH
+command in CI. Create/copy tokens privately from the machine's dashboard
+**Connect → SSH tokens → Create token**, or run `instabox ssh-token <machine>` on
+your own trusted terminal. Preserve the issued token exactly. API-issued tokens
+are documented as `ibssh_` plus 26 lowercase base32 characters; the deploy script
+intentionally checks only safe SSH username syntax (1–256 ASCII letters, digits,
+underscore, dot or hyphen, starting with a letter/digit/underscore), not an
+invented fixed token encoding that could reject other issued token contracts.
+Whitespace, `@`, shell metacharacters and leading option syntax fail closed.
+
+The official [SSH guide](https://instabox.sh/docs/access/ssh) and
+[token API](https://instabox.sh/docs/api-reference/connections/issue-an-ssh-token-for-a-plain-%60ssh%60-command-without-a-key.md)
+document token-as-username access without an SSH key. Token mode uses BatchMode,
+disables public-key/password/keyboard-interactive/GSSAPI/hostbased auth, and lets
+the gateway accept SSH's initial `none` authentication request. It does not pass
+`-i` or `IdentitiesOnly`. The token resides only in an owner-private temporary SSH
+config, not SSH argv; SSH stderr redacts it and temporary files are removed on
+exit. This is locally mock-tested, **not a live gateway authentication test**.
+Tokens expire after **7 days by default**, configurable up to **30 days**, or
+`--ttl never` (higher exposure). Renew `VPS_USER` before expiry, revoke leaked or
+unused tokens; `instabox ssh-token --revoke <machine>` revokes all machine tokens.
+API-key revocation/expiry can also invalidate tokens issued by that key.
+
+### Pin the gateway, not the guest
+
+`StrictHostKeyChecking=yes` remains mandatory in both modes. The gateway
+terminates SSH: the guest's `/etc/ssh/ssh_host_*` keys are **wrong** here. The
+trusted official CLI `instabox ssh <machine>` obtains a certificate and writes
+its gateway **host CA** known_hosts line; `instabox ssh-config <machine>` prints
+the matching client configuration. On your trusted authenticated computer,
+inspect that configuration and the CLI-managed known_hosts file. Transfer only
+the matching **public** gateway CA entry, for example
+`@cert-authority [ssh.instabox.sh]:2222 <host CA public key>`, to
+`VPS_KNOWN_HOSTS`, after checking its identity through the trusted provider
+channel. Do not copy certificates, client keys or token-bearing configuration.
+The guide does not publish a universal gateway fingerprint or promise a
+dashboard fingerprint display; if the trusted CLI/provider cannot establish the
+identity, stop and obtain confirmation from InstaBox support.
+
+Alternatively, collect candidate gateway public keys **on your own terminal**:
+
+```bash
+umask 077
+ssh-keyscan -p 2222 -t ed25519 ssh.instabox.sh > gateway-known-hosts.candidate
+ssh-keygen -lf gateway-known-hosts.candidate -E sha256
+```
+
+These commands only collect **untrusted candidates**. Independently compare the
+SHA256 gateway fingerprint with the **`hostKeyFingerprint`** returned in the
+official token-issuance API response over authenticated HTTPS (the API documents
+this as the SSH server's host-key fingerprint), or another authenticated
+provider trust source/support, before saving the matching `[ssh.instabox.sh]:2222` line in
+`VPS_KNOWN_HOSTS`. A host CA fingerprint and a raw host key fingerprint are
+*different*: compare like with like, or use the verified CA entry instead.
+Never trust `ssh-keyscan` alone, click through an unverified first-use prompt,
+or disable checking to bypass an exit 255. No scan/connection is performed by
+this implementation work. Direct SSH users instead verify the direct sshd
+identity through their trusted VPS console/provider channel.
+
+Saving settings alone does not publish local workflow/script changes. Review and
+commit/push separately; rerunning an old workflow revision does not load local
+fixes. No GitHub settings, tokens or remote state were changed by this work.
 
 Set repository variable **`VPS_DEPLOY_PATH`** only after preparation. There is
 **no default**. Suggested opt-in path: `/data/home/muse2api-production`, separate
