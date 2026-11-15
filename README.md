@@ -1,5 +1,16 @@
 # MUSE2API
 
+## Automatic CI / Tự động build và kiểm thử
+
+GitHub Actions currently runs only muse2api server synthetic Python/Node
+regressions and a Docker image build on every push, pull request and manual run.
+Flutter web/macOS jobs and client artifacts are disabled. The server image is
+build-checked only: no upload, registry publish, deployment, server startup or
+Muse credentials. Local edits must first be reviewed, committed and pushed with
+permission before GitHub can run them.
+See [CI configuration and scope](docs/CI.md) and
+[executed local verification / remote limits](docs/CI_VERIFICATION.md).
+
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python Version" />
   <img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi" alt="FastAPI" />

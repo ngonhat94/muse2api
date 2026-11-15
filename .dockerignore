@@ -1,0 +1,27 @@
+**
+# Server build inputs only; never send client, runtime state or credentials.
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!admin.html
+!app.py
+!authority.py
+!cdp.py
+!config.py
+!engine.py
+!idempotency.py
+!operations.py
+!protection.py
+!proxy.py
+!store.py
+!tenant.py
+!version.json
+!deploy/
+!deploy/**
+!extension/
+!extension/**
+!tools/
+!tools/*.py
+!tools/*.js
+**/__pycache__
+**/*.pyc

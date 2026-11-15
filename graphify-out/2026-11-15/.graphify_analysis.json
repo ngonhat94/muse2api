@@ -4412,17 +4412,6 @@
     },
     {
       "source": "ProtectionReviewTests",
-      "target": "UserStore",
-      "source_files": [
-        "tests/test_protection_review_fixes.py",
-        "tenant.py"
-      ],
-      "confidence": "INFERRED",
-      "relation": "uses",
-      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
-    },
-    {
-      "source": "ProtectionReviewTests",
       "target": "MuseEngine",
       "source_files": [
         "tests/test_protection_review_fixes.py",
@@ -4444,6 +4433,17 @@
       "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
     },
     {
+      "source": "ProtectionReviewTests",
+      "target": "UserStore",
+      "source_files": [
+        "tests/test_protection_review_fixes.py",
+        "tenant.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
       "source": "MediaBoundaryTests",
       "target": "MuseEngine",
       "source_files": [
@@ -4458,8 +4458,8 @@
   "questions": [
     {
       "type": "bridge_node",
-      "question": "Why does `ServerConnection` connect `media_bloc.dart` to `save_media.dart`, `String?`, `media_page.dart`, `desktop_connection_test.dart`, `task_bloc.dart`, `storage_usage_cubit.dart`, `connection_bloc_test.dart`, `desktop_engine_io.dart`, `video_bloc.dart`, `account_bloc.dart`, `server_connection.dart`, `media_preview.dart`, `storage_usage_cubit.dart`, `generation_recovery_cubit.dart`, `Flutter Chat · chat_bloc.dart`, `connection_bloc.dart`, `Flutter Accounts · proxy_editor.dart`, `Flutter Images · image_bloc.dart`, `keepalive_status_bloc.dart`, `Flutter Accounts · proxy_bloc.dart`?",
-      "why": "High betweenness centrality (0.041) - this node is a cross-community bridge."
+      "question": "Why does `MuseEngine` connect `MuseEngine` to `.ensure_page`, `app.py`, `MuseGenerationError`, `._attach_images`, `AccountProxyTests`, `browser_checks`, `Store`, `test_account_proxy.py`, `Store`, `._wait_attachment`, `._parse_quota`, `json`, `test_reference_media_hardening.py`, `.write_media`?",
+      "why": "High betweenness centrality (0.044) - this node is a cross-community bridge."
     },
     {
       "type": "verify_inferred",
@@ -4478,8 +4478,8 @@
     },
     {
       "type": "bridge_node",
-      "question": "Why does `RuntimeBlockers` connect `RuntimeBlockers` to `check`, `.test_video_cancel_clear_does_not_free_reservations`, `.test_maintenance_rechecks_authority_after_account_wait_all_aliases`, `json`, `.test_maintenance_waiting_gen_lock_and_keepalive_lock_recheck`, `.test_cancelled_proxy_retains_worker_reservation_at_each_wait`?",
-      "why": "High betweenness centrality (0.036) - this node is a cross-community bridge."
+      "question": "Why does `Store` connect `Store` to `._write_accounts`, `app.py`, `images_edits`, `AccountProxyTests`, `test_account_proxy.py`, `Store`, `.test_cancelled_workers_ignore_untrusted_result_path`, `AccountCipher`, `json`, `test_reference_media_hardening.py`, `.write_media`?",
+      "why": "High betweenness centrality (0.043) - this node is a cross-community bridge."
     },
     {
       "type": "verify_inferred",

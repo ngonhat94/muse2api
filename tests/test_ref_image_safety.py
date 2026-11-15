@@ -205,6 +205,9 @@ async def check_endpoints(home, data_url):
                           "http://private.example/ref",
                           "http://public.example/redirect"):
                 for endpoint, field, async_mode in variants:
+                    # Each validation case represents an independent request window.
+                    app.REQUEST_LIMITER = app.RequestLimiter()
+                    app.HEAVY_LIMITER = app.RequestLimiter()
                     body = {"prompt": "fixture", "async": async_mode,
                             field: [{"image_url": value}]
                             if field == "images" else value}

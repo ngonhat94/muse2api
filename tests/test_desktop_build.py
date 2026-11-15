@@ -20,6 +20,12 @@ class DesktopBuildTests(unittest.TestCase):
     def test_setup_includes_security_modules(self):
         self.assertIn('tenant.py', build.ENGINE_SOURCES)
         self.assertIn('protection.py', build.ENGINE_SOURCES)
+        for name in ('authority.py', 'idempotency.py', 'operations.py'):
+            self.assertIn(name, build.ENGINE_SOURCES)
+        with tempfile.TemporaryDirectory() as temporary:
+            build.copy_setup_resources(temporary)
+            for name in ('authority.py', 'idempotency.py', 'operations.py'):
+                self.assertEqual((Path(temporary)/name).read_bytes(), (ROOT/name).read_bytes())
 
     def make_bundle(self, directory):
         executable = directory / ('muse_engine.exe' if os.name == 'nt' else 'muse_engine')

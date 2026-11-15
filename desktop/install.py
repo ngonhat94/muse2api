@@ -19,6 +19,7 @@ import threading
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = (
     'app.py', 'engine.py', 'store.py', 'config.py', 'cdp.py', 'proxy.py', 'tenant.py', 'protection.py',
+    'authority.py', 'idempotency.py', 'operations.py',
     'requirements.txt', 'desktop/launcher.py', 'desktop/requirements-build.txt',
     'tools/build_desktop.py',
 )

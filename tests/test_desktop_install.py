@@ -18,6 +18,8 @@ class DesktopInstallTests(unittest.TestCase):
         setup._child = None
 
     def test_only_whitelisted_sources_are_copied(self):
+        for name in ('authority.py', 'idempotency.py', 'operations.py', 'protection.py'):
+            self.assertIn(name, setup.SOURCES)
         with tempfile.TemporaryDirectory() as source, tempfile.TemporaryDirectory() as target:
             source = Path(source); target = Path(target)
             for name in setup.SOURCES:
