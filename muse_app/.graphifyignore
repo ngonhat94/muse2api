@@ -1,0 +1,17 @@
+# Application graph: exclude generated files, dependencies and agent tooling.
+build/
+.dart_tool/
+.agents/
+.claude/
+.codex/
+.idea/
+.git/
+graphify-out/
+**/Pods/
+**/ephemeral/
+**/.symlinks/
+**/generated_plugin_registrant.*
+**/GeneratedPluginRegistrant.*
+android/gradlew
+android/gradlew.bat
+android/local.properties

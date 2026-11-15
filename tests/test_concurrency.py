@@ -46,8 +46,8 @@ def test_concurrency_lock():
 
 def test_account_pool_manager():
     dummy_accounts = [
-        {"id": "acc-1", "label": "A1", "enabled": True, "cookies": {"k": "v1"}},
-        {"id": "acc-2", "label": "A2", "enabled": True, "cookies": {"k": "v2"}},
+        {"id": "acc-1", "owner_id": "admin", "label": "A1", "enabled": True, "cookies": {"k": "v1"}},
+        {"id": "acc-2", "owner_id": "admin", "label": "A2", "enabled": True, "cookies": {"k": "v2"}},
     ]
     dummy_store = SimpleNamespace(
         accounts=dummy_accounts,
@@ -95,8 +95,8 @@ def test_account_pool_manager():
 def test_parallel_generation_simulation():
     """模拟两个请求使用不同账号并发执行生成。"""
     dummy_accounts = [
-        {"id": "acc-1", "label": "A1", "enabled": True, "cookies": {"c": "1"}},
-        {"id": "acc-2", "label": "A2", "enabled": True, "cookies": {"c": "2"}},
+        {"id": "acc-1", "owner_id": "admin", "label": "A1", "enabled": True, "cookies": {"c": "1"}},
+        {"id": "acc-2", "owner_id": "admin", "label": "A2", "enabled": True, "cookies": {"c": "2"}},
     ]
     orig_accounts = list(app.store.accounts)
     running_threads = set()

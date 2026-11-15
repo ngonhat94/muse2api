@@ -356,6 +356,9 @@ def ui_checks(engine):
 if __name__ == "__main__":
     browser = "--browser" in sys.argv
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(AccountProxyTests)
+    if "--offline" in sys.argv:
+        suite = unittest.TestSuite(test for test in suite
+                                  if getattr(test, "_testMethodName", None) != "test_authenticated_http_and_connect_and_shutdown")
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if result.wasSuccessful() and browser:
         browser_checks()

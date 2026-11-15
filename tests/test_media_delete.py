@@ -88,6 +88,10 @@ async def main():
             f.write("content1")
         with open(f2, "w") as f:
             f.write("content2")
+        # Secure media is deny-by-default; synthetic legacy-admin fixtures must
+        # be indexed just like completed generation workers index their output.
+        module.store.register_media("sample1.webp", "admin")
+        module.store.register_media("sample2.mp4", "admin")
 
         async with Client(module.app, {"Authorization": "Bearer test-secret"}) as client:
             # 1. List media

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import urlsplit
 
 import json
 
@@ -78,7 +79,8 @@ class Client:
 
 async def check(source, home):
     os.environ.update(MUSE2API_HOME=home, MUSE2API_PROFILE_ROOT=home,
-                      MUSE2API_KEY="test-only", MUSE2API_PUBLIC_BASE="")
+                      MUSE2API_KEY="test-only", MUSE2API_PUBLIC_BASE="",
+                      MUSE2API_REQUESTS_PER_MINUTE="10000", MUSE2API_GENERATIONS_PER_MINUTE="10000")
     sys.path.insert(0, str(source.parent))
     spec = importlib.util.spec_from_file_location("image_api_test_target", source)
     module = importlib.util.module_from_spec(spec)
@@ -88,6 +90,7 @@ async def check(source, home):
     release = threading.Event()
     media = Path(module.CFG.media_dir) / "fixture.png"
     media.write_bytes(b"image fixture bytes")
+    module.store.register_media(media.name, module.ADMIN_OWNER)
 
     def generation(prompt, kind, timeout, **kwargs):
         references = kwargs.get("reference_images")
@@ -163,7 +166,7 @@ async def check(source, home):
         assert response.status_code == 202
         done = await finish(response.json()["task_id"])
         assert done["status"] == "completed"
-        assert done["data"][0]["url"].endswith("fixture.png")
+        assert urlsplit(done["data"][0]["url"]).path.endswith("fixture.png")
         assert calls[-1][3] == ["data:image/png;base64," + base64.b64encode(b"fixture reference").decode()]
         response = await client.post("/v1/images/edits", json={
             "prompt": "edit JSON reference", "async": True, "reference_image": "data:image/png;base64,eA=="})
@@ -264,8 +267,9 @@ async def check(source, home):
         print("bounded_queue=PASS")
         pending = module.store.create_task("image", "interrupted fixture")
         await module._startup()
-        assert module.store.get_task(pending["id"])["status"] == "failed"
-        print("restart_marks_interrupted_tasks_failed=PASS")
+        assert module.store.get_task(pending["id"])["status"] == "unknown"
+        assert 'Do not resubmit' in module.store.get_task(pending["id"])["error"]
+        print("restart_marks_interrupted_tasks_uncertain=PASS")
     print("PASS async image API regression")
 
 

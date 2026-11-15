@@ -65,7 +65,7 @@ def renew(cookies, expires=None, **kwargs):
     return {"ok": True, "status": "assigned"}
 with patch("requests.Session.get", autospec=True, side_effect=exit_request), \
      patch.object(app.engine, "renew_session_http", side_effect=renew):
-    result = app.test_account_proxy(aid)
+    result = asyncio.run(app.test_account_proxy(aid))
 assert result["ok"] and result["proxy_reachable"] and result["session_ok"]
 assert result["exit_ip"] == "203.0.113.42"
 assert "secret-marker" not in json.dumps(result)
@@ -74,7 +74,7 @@ assert seen
 
 with patch("requests.Session.get", side_effect=requests.exceptions.ProxyError("secret-marker")), \
      patch.object(app.engine, "renew_session_http") as renew_mock:
-    result = app.test_account_proxy(aid)
+    result = asyncio.run(app.test_account_proxy(aid))
 assert not result["ok"] and result["session_ok"] is None
 assert "secret-marker" not in json.dumps(result)
 renew_mock.assert_not_called()
@@ -85,7 +85,7 @@ for error in (app.MuseAuthError("fixture 401"),
               app.MuseProxyError("fixture proxy authentication failed")):
     with patch("requests.Session.get", autospec=True, side_effect=exit_request), \
          patch.object(app.engine, "renew_session_http", side_effect=error):
-        failed = app.test_account_proxy(aid)
+        failed = asyncio.run(app.test_account_proxy(aid))
     assert failed["ok"] is False
     assert all(acc.get(k) == value for k, value in protected.items())
     assert "secret-marker" not in json.dumps(failed)

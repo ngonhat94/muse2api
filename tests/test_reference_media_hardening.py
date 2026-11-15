@@ -35,7 +35,13 @@ def reject(engine, mime, data):
     raise AssertionError("invalid reference accepted: " + mime)
 
 with tempfile.TemporaryDirectory() as home:
-    engine = MuseEngine(SimpleNamespace(profile_dir=home, media_dir=home))
+    from config import Config
+    from store import Store
+    media_store = Store(Config(base_dir=str(Path(home) / 'synthetic-store')))
+    engine = MuseEngine(SimpleNamespace(profile_dir=home, media_dir=media_store.cfg.media_dir))
+    engine.media_writer = media_store.write_media
+    engine.media_limits = media_store.storage_limits
+    engine._ensure_local().media_owner = 'admin'
     for unknown in (False, True):
         assert _webm_duration(webm(120, unknown_segment=unknown)) == 120
         assert engine._normalize_image(data_url("video/webm", webm(120, unknown_segment=unknown)))[1] == "video/webm"

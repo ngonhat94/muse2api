@@ -1,0 +1,62 @@
+[
+  {
+    "script": "operational_dashboard",
+    "exit": 0
+  },
+  {
+    "script": "data_protection",
+    "exit": 0
+  },
+  {
+    "script": "protection_review_fixes",
+    "exit": 0
+  },
+  {
+    "script": "media_boundary",
+    "exit": 0
+  },
+  {
+    "script": "tenant_review_blockers",
+    "exit": 0
+  },
+  {
+    "script": "multitenant_security",
+    "exit": 0
+  },
+  {
+    "script": "reference_admission",
+    "exit": 0
+  },
+  {
+    "script": "async_images",
+    "exit": 0
+  },
+  {
+    "script": "concurrency",
+    "exit": 0
+  },
+  {
+    "script": "media_delete",
+    "exit": 0
+  },
+  {
+    "script": "account_proxy_routing",
+    "exit": 0
+  },
+  {
+    "script": "reference_media_hardening",
+    "exit": 0
+  },
+  {
+    "script": "operations",
+    "exit": 0
+  },
+  {
+    "script": "local_update_safety",
+    "exit": 0
+  },
+  {
+    "script": "session_health",
+    "exit": 0
+  }
+]

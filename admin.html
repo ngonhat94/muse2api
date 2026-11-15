@@ -231,8 +231,15 @@
 </header>
 
 <main>
+  <section class="card" aria-labelledby="operationsTitle">
+    <h2 id="operationsTitle">运行概览</h2>
+    <p class="hint">仅统计本机已保存任务；不是 Muse 实时状态。等待时间预测未知，排队年龄不是预计完成时间。</p>
+    <button type="button" class="ghost" id="operationsRefresh" onclick="refreshOperations()">刷新运行概览</button>
+    <p id="operationsSummary" role="status" aria-live="polite">尚未加载。请手动刷新。</p>
+    <p id="operationsAggregate" class="hint" style="white-space:pre-wrap;overflow-wrap:anywhere"></p>
+  </section>
   <!-- 实时新版本更新通知横幅（当官方仓库有新提交/新版本时自动向所有已部署用户弹出） -->
-  <div class="banner" id="updateBanner" style="border-color:rgba(79,140,255,.65);background:linear-gradient(90deg,rgba(79,140,255,.16),rgba(167,139,250,.05));align-items:center;justify-content:space-between;flex-wrap:wrap">
+  <div class="banner admin-only" id="updateBanner" style="border-color:rgba(79,140,255,.65);background:linear-gradient(90deg,rgba(79,140,255,.16),rgba(167,139,250,.05));align-items:center;justify-content:space-between;flex-wrap:wrap">
     <div style="display:flex;gap:12px;align-items:flex-start;flex:1;min-width:260px">
       <span class="ic">🔔</span>
       <div>
@@ -249,7 +256,7 @@
   </div>
 
   <!-- 版本状态与官方仓库更新中心面板 -->
-  <div class="card" id="repoPanel" style="display:none;border-color:rgba(79,140,255,.45);margin-bottom:16px">
+  <div class="card admin-only" id="repoPanel" style="display:none;border-color:rgba(79,140,255,.45);margin-bottom:16px">
     <h3>
       <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
       官方仓库版本检测与在线热升级
@@ -283,6 +290,7 @@
     <button data-t="tasks">任务记录</button>
     <button data-t="media">媒体库</button>
     <button data-t="play">接口测试</button>
+    <button class="admin-only" data-t="users">用户密钥</button>
     <button data-t="docs">接入文档</button>
   </nav>
 
@@ -294,7 +302,7 @@
       <span id="expWarnText"></span>
       <button class="ghost mini" onclick="goTab('cookie')">去重新登录</button>
     </div>
-    <div class="card" style="border-color:rgba(79,140,255,.4)">
+    <div class="card" id="accessCard" style="border-color:rgba(79,140,255,.4)">
       <h3>接入信息 <span class="tag">下游项目填这两个值</span></h3>
       <div class="hint">把下面两项填进你的项目就能调用。BASE URL 就是接口地址前缀。</div>
       <div class="row">
@@ -311,7 +319,7 @@
             <input type="text" id="inKey" readonly>
             <button class="ghost mini" onclick="toggleKey()" id="keyEye">显示</button>
             <button class="ghost mini" onclick="copyKey()">复制</button>
-            <button class="danger mini" onclick="rotateKey()">重新生成</button>
+            <button class="danger mini admin-only" id="rotateAdminKey" onclick="rotateKey()">重新生成</button>
           </div>
         </div>
       </div>
@@ -370,6 +378,46 @@
         </tr></thead>
         <tbody id="poolBody"><tr><td colspan="10" class="empty">加载中…</td></tr></tbody>
       </table></div>
+    </div>
+  </section>
+
+  <!-- ==================== 管理员：用户密钥 ==================== -->
+  <section class="tab admin-only" id="tab-users">
+    <div class="card">
+      <h3>租户用户与访问密钥 <span class="tag">管理员</span></h3>
+      <div class="hint">每个用户只会看到自己的账号、任务与媒体。新密钥仅在创建或轮换成功时显示一次。</div>
+      <div class="row">
+        <div><label for="newUserLabel">用户名称</label><input id="newUserLabel" type="text" maxlength="100" placeholder="例如 design-team"></div>
+        <div style="flex:0 0 auto"><button onclick="createTenantUser()">创建用户并生成密钥</button></div>
+      </div>
+      <div id="newUserKey" class="result" role="status" aria-live="polite"></div>
+    </div>
+    <div class="card">
+      <h3>用户列表</h3>
+      <div class="tblwrap"><table><thead><tr><th>名称</th><th>ID</th><th>状态</th><th>密钥版本</th><th>操作</th></tr></thead>
+        <tbody id="usersBody"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table></div>
+    </div>
+    <div class="card" id="tenantLimits" hidden>
+      <h3>存储与限制 · <span id="tenantLimitOwner"></span></h3>
+      <p id="tenantLimitUsage" class="hint" role="status"></p>
+      <div class="row">
+        <div><label for="limit_storage_bytes">存储 bytes（1–1125899906842624）</label><input id="limit_storage_bytes" type="number" min="1" max="1125899906842624" step="1" autocomplete="off"></div>
+        <div><label for="limit_storage_files">文件数（1–1000000）</label><input id="limit_storage_files" type="number" min="1" max="1000000" step="1" autocomplete="off"></div>
+        <div><label for="limit_retention_days">保留天数（1–3650）</label><input id="limit_retention_days" type="number" min="1" max="3650" step="1" autocomplete="off"></div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <div><label for="limit_requests_per_minute">请求 / 分钟（1–100000）</label><input id="limit_requests_per_minute" type="number" min="1" max="100000" step="1" autocomplete="off"></div>
+        <div><label for="limit_generations_per_minute">生成 / 分钟（1–1000）</label><input id="limit_generations_per_minute" type="number" min="1" max="1000" step="1" autocomplete="off"></div>
+      </div>
+      <p id="tenantLimitStatus" class="hint" role="status" aria-live="polite"></p>
+      <div class="acts">
+        <button id="tenantLimitSave" onclick="saveTenantLimits()" disabled>确认并保存完整限制</button>
+        <button class="ghost" onclick="if(tenantLimitTarget)openTenantLimits(tenantLimitTarget.id)">重新读取</button>
+        <button class="ghost" onclick="previewTenantRetention()">预览保留期（不删除）</button>
+        <button class="ghost" onclick="closeTenantLimits()">关闭</button>
+      </div>
+      <p id="tenantRetentionPreview" class="hint" role="status" aria-live="polite"></p>
+      <p class="hint">此面板不提供删除操作。管理员自身的限制由环境配置管理；本接口仅修改租户用户。</p>
     </div>
   </section>
 
@@ -556,6 +604,7 @@
           <button class="danger mini" id="btnDelSelectedMedia" onclick="delSelectedMedia()" style="display:none">删除选中 (<span id="selMediaCount">0</span>)</button>
         </div>
       </div>
+      <p class="hint" id="storageUsage" role="status">存储用量尚未加载；与 Muse 余额独立计算。</p>
       <div class="grid" id="mediaGrid"><div class="empty">加载中…</div></div>
     </div>
   </section>
@@ -634,10 +683,10 @@ curl -X POST <span class="s">"BASE/v1/chat/completions"</span> \
 <span class="c"># 返回</span>
 {<span class="k">"created"</span>:1790148495,<span class="k">"data"</span>:[{
   <span class="k">"revised_prompt"</span>:<span class="s">"一只戴宇航头盔的柴犬"</span>,
-  <span class="k">"url"</span>:<span class="s">"http://your-server:18610/v1/media/xxxx.webp"</span>,
+  <span class="k">"url"</span>:<span class="s">"http://your-server:18610/v1/media/xxxx.webp?cap=short_lived_capability"</span>,
   <span class="k">"kind"</span>:<span class="s">"image"</span>,<span class="k">"bytes"</span>:23860}]}
 
-<span class="c"># url 是完整绝对地址，可直接给下游渲染 / 下载；/v1/media/* 无需鉴权。</span>
+<span class="c"># url 携带短时、资源与租户绑定的 capability；过期后重新查询任务或媒体列表。</span>
 <span class="c"># 想要 base64 就传 "response_format":"b64_json"。</span></pre>
 
       <h4>4. 生视频（curl，异步）</h4>
@@ -650,7 +699,7 @@ curl -X POST <span class="s">"BASE/v1/videos"</span> \
 
 <span class="c"># ② 轮询结果</span>
 curl <span class="s">"BASE/v1/videos/task_xxx"</span> -H <span class="s">"Authorization: Bearer $MUSE2API_KEY"</span>
-<span class="c"># → {"status":"succeeded","result":{"url":"/v1/media/xxx.mp4"}}</span></pre>
+<span class="c"># → {"status":"succeeded","result":{"url":"/v1/media/xxx.mp4?cap=..."}}</span></pre>
 
       <h4>5. Python（openai SDK 兼容）</h4>
       <pre class="code"><span class="cp" onclick="cp(this)">复制</span><span class="k">from</span> openai <span class="k">import</span> OpenAI
@@ -693,9 +742,9 @@ t = requests.post(<span class="s">"BASE/v1/videos"</span>, json={<span class="s"
 
       <h4>7. 鉴权</h4>
       <div class="hint" style="margin:0" data-i18n="auth-hint">
-        除 <code>/healthz</code>、<code>/readyz</code>、<code>/v1/media/*</code> 外，其余接口均需
-        <code>Authorization: Bearer &lt;API Key&gt;</code>。API Key 在服务器
-        <code>/opt/muse2api/.env</code> 的 <code>MUSE2API_KEY</code> 中配置。
+        除 <code>/healthz</code> 外，其余业务接口均需
+        <code>Authorization: Bearer &lt;API Key&gt;</code>。媒体响应使用短期、资源限定的访问链接，
+        不会把 API Key 放进 URL。管理员可在「用户密钥」页为每位用户生成独立密钥。
       </div>
 
       <h4>8. 接入各类客户端 / 智能体</h4>
@@ -986,7 +1035,7 @@ const I18N_EN = {
   "'{\"prompt\":\"一只戴宇航头盔的柴犬\",\"size\":\"1:1\",\"response_format\":\"url\"}'": "'{\"prompt\":\"A Shiba Inu wearing a space helmet\",\"size\":\"1:1\",\"response_format\":\"url\"}'",
   "# 返回": "# Response",
   "\"一只戴宇航头盔的柴犬\"": "\"A Shiba Inu wearing a space helmet\"",
-  "# url 是完整绝对地址，可直接给下游渲染 / 下载；/v1/media/* 无需鉴权。": "# url is a full absolute address that downstream apps can render / download directly; /v1/media/* needs no auth.",
+  "# url 携带短时、资源与租户绑定的 capability；过期后重新查询任务或媒体列表。": "# The URL carries a short-lived resource- and tenant-bound capability; reload the task or media list after expiry.",
   "# 想要 base64 就传 \"response_format\":\"b64_json\"。": "# For base64, pass \"response_format\":\"b64_json\".",
   "4. 生视频（curl，异步）": "4. Video generation (curl, async)",
   "# ① 创建任务": "# ① Create the task",
@@ -1229,7 +1278,7 @@ const I18N_EN_HTML = {
   "lifetime-hint": "Session validity is determined by upstream authentication. hatch_vml is an optional workspace token that may be absent or reissued; its absence or expiry alone does not prove the login is invalid. Test the account after import. Log in and import again when the upstream returns HTTP 401.",
   "docs-intro": "\n        The API follows the OpenAI style; downstream projects only need to change <code>base_url</code> and <code>api_key</code>.\n        <br>BASE URL: <code id=\"dBase\">—</code>\n      ",
   "models-hint": "\n        These three are the real capabilities of the Muse family: <b>Muse Spark</b> (language / code), <b>Muse Image</b> (images),\n        <b>Muse Video</b> (videos). The muse.ai web app is an auto-routing agent with no model picker in the UI,\n        so the <code>model</code> field is only for downstream compatibility: common names like <code>gpt-4o</code>,\n        <code>claude-sonnet-4</code> and <code>dall-e-3</code> are mapped to the matching capability automatically.\n      ",
-  "auth-hint": "\n        Except for <code>/healthz</code>, <code>/readyz</code> and <code>/v1/media/*</code>, all endpoints require\n        <code>Authorization: Bearer &lt;API Key&gt;</code>. The API Key is configured in\n        <code>MUSE2API_KEY</code> in <code>/opt/muse2api/.env</code> on the server.\n      ",
+  "auth-hint": "\n        Except for <code>/healthz</code>, business endpoints require <code>Authorization: Bearer &lt;API Key&gt;</code>. Media responses use short-lived, resource-scoped links and never place API keys in URLs. Administrators can create an independent key for each user in the User Keys tab.\n      ",
   "model-alias-hint": "\n        <b>Any model name works</b>: common names (<code>gpt-4o</code>, <code>gpt-5</code>,\n        <code>claude-sonnet-4</code>, <code>deepseek-chat</code>, <code>gemini-2.5-pro</code>, etc.)\n        are mapped to the matching capability automatically; unknown names are passed through unchanged. muse.ai routes automatically anyway,\n        so the result is the same.\n      ",
   "tool-calls-hint": "\n        <b>About the \"tool calling\" limitation (important, tested):</b><br>\n        The muse.ai web assistant has an explicit alignment policy that refuses to \"output fake tool-call JSON\". Its actual reply in testing was\n        \"I won't output 'fake tool calls' in this JSON format — I don't have a get_weather tool.\"\n        Three prompt protocols with different wording and placement were tried, and all failed.<br>\n        So: <b>autonomous agent modes</b> that depend on <code>tool_calls</code> (reading/writing files, running commands, etc.) can't be supported;\n        but all <b>Q&amp;A-style</b> usage (chat, coding, explaining, translating, summarizing, images, videos) <b>works fully</b>.<br>\n        If a client sends a <code>tools</code> field anyway, the API won't error: it ignores the tool declarations and answers as a normal chat.\n      ",
   "col-enabled": "Enabled",
@@ -1415,12 +1464,14 @@ if (LANG === 'en') {
 const $ = id => document.getElementById(id);
 const KEY_STORE = 'muse2api_key';
 let KEY = localStorage.getItem(KEY_STORE) || new URLSearchParams(location.search).get('key') || '';
+let CURRENT = null;
 $('key').value = KEY;
 $('dBase').textContent = location.origin + '/v1';
 
 /* 登录状态：控制提示条和 Key 输入框高亮 */
 let authOK = null;
 function setAuth(ok){
+  if (!ok) { closeTenantLimits(); clearOperations(); CURRENT = null; }
   if (authOK === ok) return;
   authOK = ok;
   $('authBanner').classList.toggle('show', !ok);
@@ -1430,12 +1481,30 @@ function setAuth(ok){
 }
 
 function saveKey(){
+  closeTenantLimits(); clearOperations(); CURRENT = null;
   KEY = $('key').value.trim();
   localStorage.setItem(KEY_STORE, KEY);
   if (!KEY){ setAuth(false); toast('已清除 API Key', 'warn'); return; }
   toast('API Key 已保存到本机浏览器，下次打开自动带上', 'ok');
   authOK = null;                 // 强制重新判定
   refreshAll();
+}
+
+function applyRole(){
+  closeTenantLimits();
+  const isAdmin = CURRENT && CURRENT.role === 'admin';
+  document.querySelectorAll('.admin-only').forEach(el => { el.hidden = !isAdmin; });
+  if (!isAdmin && CURRENT){
+    realKey = KEY;
+    $('inBase').value = location.origin + '/v1';
+    renderKey();
+  }
+}
+
+async function loadPrincipal(){
+  CURRENT = await api('/v1/me');
+  applyRole();
+  return CURRENT;
 }
 
 function toast(msg, kind){
@@ -1459,6 +1528,11 @@ async function api(path, opts){
     throw new Error('API Key 未填写或填写错误');
   }
   setAuth(true);
+  if (r.status === 429) {
+    const seconds = /^\d{1,6}$/.test(r.headers.get('Retry-After') || '') ? r.headers.get('Retry-After') : '60';
+    throw new Error('请求过于频繁。请等待 ' + seconds + ' 秒，先检查任务状态，勿自动重新提交生成。');
+  }
+  if (r.status === 507) throw new Error('服务器存储额度已满，并非 Muse 余额不足。请删除自己的媒体或联系管理员，勿自动重新提交。');
   if (!r.ok) {
     let msg = '';
     if (data) {
@@ -1530,6 +1604,7 @@ document.querySelectorAll('nav.tabs button').forEach(b => {
     $('tab-' + b.dataset.t).classList.add('active');
     if (b.dataset.t === 'tasks') loadTasks();
     if (b.dataset.t === 'media') loadMedia();
+    if (b.dataset.t === 'users') loadUsers();
     if (b.dataset.t === 'cookie') $('cmdText').textContent = buildCmd($('inBase').value);
   };
 });
@@ -1539,6 +1614,14 @@ let realKey = '';
 let keyShown = false;
 
 async function loadApikey(){
+  if (!CURRENT || CURRENT.role !== 'admin'){
+    realKey = KEY;
+    $('inBase').value = location.origin + '/v1';
+    renderKey();
+    fillExtFields(location.origin);
+    $('cmdText').textContent = buildCmd(location.origin + '/v1');
+    return;
+  }
   try{
     const d = await api('/admin/apikey');
     realKey = d.api_key || '';
@@ -1613,6 +1696,7 @@ async function rotateKey(){
   if (!confirm('重新生成 API Key？\n\n旧 Key 会立即失效，已经接入的下游项目必须同步更新，否则会报 401。')) return;
   try{
     const d = await api('/admin/apikey/rotate', {method:'POST'});
+    closeTenantLimits(); clearOperations();
     realKey = d.api_key;
     KEY = d.api_key;
     localStorage.setItem(KEY_STORE, KEY);
@@ -1621,6 +1705,193 @@ async function rotateKey(){
     $('cmdText').textContent = buildCmd($('inBase').value);
     toast('已生成新 Key 并立即生效，本页已自动更新', 'ok');
   }catch(e){ toast('生成失败：' + e.message, 'bad'); }
+}
+
+/* Operational dashboard */
+let operationsSequence = 0;
+function clearOperations(){
+  operationsSequence++;
+  $('operationsSummary').textContent = '尚未加载。请手动刷新。';
+  $('operationsAggregate').textContent = '';
+  $('operationsRefresh').disabled = false;
+}
+function operationsLine(data){
+  const count = value => Number.isSafeInteger(value) && value >= 0 ? value : '未知';
+  const t = data && data.tasks || {};
+  const s = data && data.storage;
+  return '排队 ' + count(t.queued) + ' · 执行 ' + count(t.running) + ' · 失败 ' + count(t.failed) +
+    ' · 最早排队年龄 ' + count(data && data.oldest_queued_seconds) + ' 秒 · 预计等待：未知。' +
+    (s && s.limits ? ' 存储 ' + count(s.bytes) + ' / ' + count(s.limits.bytes) + ' bytes · ' + count(s.files) + ' / ' + count(s.limits.files) + ' 文件。' : ' 存储用量未知。');
+}
+async function refreshOperations(){
+  const sequence = ++operationsSequence, key = KEY, owner = CURRENT && CURRENT.id;
+  const current = () => sequence === operationsSequence && key === KEY && owner === (CURRENT && CURRENT.id);
+  $('operationsRefresh').disabled = true;
+  $('operationsSummary').textContent = '正在读取本机状态…';
+  $('operationsAggregate').textContent = '';
+  try {
+    const data = await api('/v1/operations');
+    if (!current()) return;
+    $('operationsSummary').textContent = operationsLine(data);
+    if (CURRENT && CURRENT.role === 'admin') {
+      const all = await api('/admin/operations');
+      if (!current()) return;
+      const rows = Array.isArray(all && all.users) ? all.users : [];
+      $('operationsAggregate').textContent = rows.map(row => String(row.owner_id) + '：' + operationsLine(row)).join('\n') +
+        '\n数据所在文件系统可用 bytes：' + (Number.isSafeInteger(all.disk && all.disk.available_bytes) ? all.disk.available_bytes : '未知') + '。临时文件用量：未知；不受媒体额度约束。';
+    }
+  } catch (_) {
+    if (current()) {
+      $('operationsSummary').textContent = '运行概览暂不可用。请确认连接与权限后手动刷新。';
+      $('operationsAggregate').textContent = '';
+    }
+  } finally {
+    if (current()) $('operationsRefresh').disabled = false;
+  }
+}
+/* End operational dashboard */
+
+/* Tenant limit controls */
+const TENANT_LIMIT_FIELDS = {
+  storage_bytes: ['存储 bytes', 1125899906842624],
+  storage_files: ['文件数', 1000000], retention_days: ['保留天数', 3650],
+  requests_per_minute: ['请求 / 分钟', 100000], generations_per_minute: ['生成 / 分钟', 1000]
+};
+let tenantLimitTarget = null;
+let tenantLimitSequence = 0;
+let tenantLimitBusy = false;
+function tenantLimitCurrent(target) {
+  return target && target === tenantLimitTarget && CURRENT && CURRENT.role === 'admin' && CURRENT === target.principal;
+}
+function closeTenantLimits() {
+  ++tenantLimitSequence; tenantLimitTarget = null; tenantLimitBusy = false;
+  $('tenantLimits').hidden = true;
+  $('tenantLimitOwner').textContent = '';
+  $('tenantLimitUsage').textContent = '';
+  $('tenantLimitStatus').textContent = '';
+  $('tenantRetentionPreview').textContent = '';
+  for (const field of Object.keys(TENANT_LIMIT_FIELDS)) $('limit_' + field).value = '';
+}
+function tenantLimitError() {
+  return '操作未确认。权限、限流或存储统计可能暂不可用；请稍后手动刷新。不会自动重试或删除媒体。';
+}
+async function openTenantLimits(id) {
+  closeTenantLimits();
+  if (!CURRENT || CURRENT.role !== 'admin' || !/^usr_[a-zA-Z0-9_]+$/.test(id)) return;
+  const target = tenantLimitTarget = {id, principal:CURRENT};
+  const sequence = ++tenantLimitSequence;
+  $('tenantLimits').hidden = false;
+  $('tenantLimitOwner').textContent = id;
+  $('tenantLimitStatus').textContent = '正在读取；未读取完整配置前不能保存。';
+  $('tenantLimitSave').disabled = true;
+  try {
+    const data = await api('/admin/users');
+    if (!tenantLimitCurrent(target) || sequence !== tenantLimitSequence) return;
+    const user = (data.users || []).find(u => u.id === id);
+    if (!user) throw new Error('unavailable');
+    const usage = await api('/admin/users/' + encodeURIComponent(id) + '/storage');
+    if (!tenantLimitCurrent(target) || sequence !== tenantLimitSequence) return;
+    const valid = n => Number.isSafeInteger(n) && n >= 0;
+    if (!usage || !valid(usage.bytes) || !valid(usage.files) || !usage.limits || !valid(usage.limits.bytes) || !valid(usage.limits.files)) throw new Error('unavailable');
+    const saved = user.limits || {};
+    const values = {storage_bytes:usage.limits.bytes, storage_files:usage.limits.files, retention_days:usage.limits.retention_days,
+      requests_per_minute:saved.requests_per_minute, generations_per_minute:saved.generations_per_minute};
+    for (const [field, [,max]] of Object.entries(TENANT_LIMIT_FIELDS)) {
+      const n = values[field];
+      $('limit_' + field).value = Number.isSafeInteger(n) && n >= 1 && n <= max ? n : '';
+    }
+    $('tenantLimitUsage').textContent = usage.bytes + ' / ' + usage.limits.bytes + ' bytes · ' + usage.files + ' / ' + usage.limits.files + ' 文件（读取时快照）。与 Muse 余额独立。';
+    $('tenantLimitStatus').textContent = '保存会完整替换五项配置。空白速率表示继承环境值，接口未报告其有效值；请明确填写全部五项，勿当作零。降低额度不会删除现有媒体。';
+    $('tenantLimitSave').disabled = false;
+  } catch (_) {
+    if (tenantLimitCurrent(target)) $('tenantLimitStatus').textContent = tenantLimitError();
+  }
+}
+async function saveTenantLimits() {
+  const target = tenantLimitTarget;
+  if (!tenantLimitCurrent(target) || tenantLimitBusy || $('tenantLimitSave').disabled) return;
+  const payload = {};
+  for (const [field, [label,max]] of Object.entries(TENANT_LIMIT_FIELDS)) {
+    const raw = String($('limit_' + field).value).trim();
+    const value = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1 || value > max) {
+      $('tenantLimitStatus').textContent = label + '：请输入 1–' + max + ' 的整数。全部五项必填。'; return;
+    }
+    payload[field] = value;
+  }
+  if (!confirm('完整替换用户 ' + target.id + ' 的五项限制？\n' + Object.entries(payload).map(([k,v]) => TENANT_LIMIT_FIELDS[k][0] + ': ' + v).join('\n') + '\n不会删除现有媒体；请求结果不确定时先刷新，不自动重试。')) return;
+  if (!tenantLimitCurrent(target)) return;
+  tenantLimitBusy = true; $('tenantLimitSave').disabled = true;
+  try {
+    await api('/admin/users/' + encodeURIComponent(target.id) + '/limits', {method:'PATCH', body:JSON.stringify(payload)});
+    if (!tenantLimitCurrent(target)) return;
+    // Discard mutation response; read authoritative configuration and usage.
+    await openTenantLimits(target.id);
+  } catch (_) {
+    if (tenantLimitCurrent(target)) $('tenantLimitStatus').textContent = tenantLimitError() + ' 保存可能已生效，请先刷新后再决定。';
+  } finally { tenantLimitBusy = false; }
+}
+async function previewTenantRetention() {
+  const target = tenantLimitTarget;
+  if (!tenantLimitCurrent(target) || tenantLimitBusy) return;
+  tenantLimitBusy = true;
+  $('tenantRetentionPreview').textContent = '正在预览；不会删除文件。';
+  try {
+    const preview = await api('/admin/users/' + encodeURIComponent(target.id) + '/retention', {method:'POST',body:JSON.stringify({dry_run:true})});
+    if (!tenantLimitCurrent(target)) return;
+    if (preview.dry_run !== true || !Array.isArray(preview.candidates) || !Array.isArray(preview.quarantined)) throw new Error('unavailable');
+    $('tenantRetentionPreview').textContent = '仅预览：' + preview.candidates.length + ' 个文件符合保留期；' + preview.quarantined.length + ' 个未知条目需管理员核对。未删除任何文件。不显示文件名或路径。';
+  } catch (_) {
+    if (tenantLimitCurrent(target)) $('tenantRetentionPreview').textContent = tenantLimitError();
+  } finally { tenantLimitBusy = false; }
+}
+/* End tenant limit controls */
+
+async function loadUsers(){
+  if (!CURRENT || CURRENT.role !== 'admin') return;
+  try{
+    const d = await api('/admin/users');
+    const rows = d.users || [];
+    $('usersBody').innerHTML = rows.length ? rows.map(u => `<tr>
+      <td>${esc(u.label)}</td><td class="mono">${esc(u.id)}</td>
+      <td><span class="badge ${u.enabled ? 'ok' : 'bad'}">${u.enabled ? '启用' : '停用'}</span></td>
+      <td class="mono">${Number(u.key_version || 0)}</td>
+      <td class="acts"><button class="ghost mini" onclick="openTenantLimits('${esc(u.id)}')">存储与限制</button><button class="ghost mini" onclick="rotateTenantKey('${esc(u.id)}')">轮换密钥</button>
+      <button class="ghost mini" onclick="setTenantEnabled('${esc(u.id)}',${!u.enabled})">${u.enabled ? '停用' : '启用'}</button>
+      <button class="danger mini" onclick="revokeTenantKey('${esc(u.id)}')">撤销密钥</button></td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty">尚未创建用户</td></tr>';
+  }catch(e){ $('usersBody').innerHTML = `<tr><td colspan="5" class="empty">${esc(e.message)}</td></tr>`; }
+}
+
+function showOneTimeKey(data){
+  const box = $('newUserKey');
+  box.innerHTML = '<b>密钥仅显示这一次，请立即保存</b><div class="copyline" style="margin-top:10px"><input id="oneTimeUserKey" type="text" readonly><button class="ghost mini" onclick="copyEl(\'oneTimeUserKey\')">复制</button></div>';
+  $('oneTimeUserKey').value = data.api_key;
+  box.classList.add('show');
+}
+
+async function createTenantUser(){
+  const label = $('newUserLabel').value.trim();
+  if (!label) return toast('请输入用户名称', 'warn');
+  try{
+    const d = await api('/admin/users', {method:'POST', body:JSON.stringify({label})});
+    $('newUserLabel').value = '';
+    showOneTimeKey(d); loadUsers();
+  }catch(e){ toast('创建失败：' + e.message, 'bad'); }
+}
+async function rotateTenantKey(id){
+  if (!confirm('轮换后旧密钥和旧媒体链接会立即失效，继续吗？')) return;
+  try{ const d = await api(`/admin/users/${id}/key`, {method:'POST'}); showOneTimeKey(d); loadUsers(); }
+  catch(e){ toast('轮换失败：' + e.message, 'bad'); }
+}
+async function setTenantEnabled(id, enabled){
+  try{ await api(`/admin/users/${id}`, {method:'PATCH', body:JSON.stringify({enabled})}); loadUsers(); }
+  catch(e){ toast('更新失败：' + e.message, 'bad'); }
+}
+async function revokeTenantKey(id){
+  if (!confirm('撤销后该用户将无法登录，旧媒体链接也会立即失效。继续吗？')) return;
+  try{ await api(`/admin/users/${id}/key`, {method:'DELETE'}); loadUsers(); }
+  catch(e){ toast('撤销失败：' + e.message, 'bad'); }
 }
 
 /* ================= 额度显示 ================= */
@@ -2093,6 +2364,12 @@ async function delSelectedMedia(){
 
 async function loadMedia(){
   try{
+    try {
+      const usage = await api('/v1/storage');
+      $('storageUsage').textContent = '存储：' + usage.bytes + ' / ' + usage.limits.bytes + ' bytes · ' + usage.files + ' / ' + usage.limits.files + ' 文件；' + usage.limits.retention_days + ' 天后可由管理员审核清理。与 Muse 余额独立。';
+    } catch (_) {
+      $('storageUsage').textContent = '存储用量暂不可用；请联系管理员。不会自动删除文件。';
+    }
     const d = await api('/admin/media');
     const ms = d.media || [];
     _allMedia = ms;
@@ -2133,23 +2410,38 @@ async function loadMedia(){
 }
 
 /* ================= 在线测试 ================= */
+const generationAdmissions = new Map();
+function generationAdmission(kind, payload){
+  const binding = JSON.stringify([KEY, payload]);
+  const previous = generationAdmissions.get(kind);
+  if (previous && previous.binding === binding) return previous.key;
+  if (previous && !confirm('先前任务结果未确认。请先检查任务记录。仍要提交新的生成请求？')) return null;
+  const key = crypto.randomUUID();
+  generationAdmissions.set(kind, {binding, key});
+  return key;
+}
 async function runImage(){
   const btn = $('imgBtn'), box = $('imgRes');
+  if (btn.disabled) return;
   const prompt = $('imgPrompt').value.trim();
   if (!prompt) return toast('请输入提示词', 'warn');
+  const payload = {prompt, size: $('imgSize').value, timeout:600};
+  const admissionKey = generationAdmission('image', payload);
+  if (!admissionKey) return;
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>生成中…';
   box.className = 'result show';
   box.innerHTML = '<span class="spin"></span>正在提交图片任务，生成期间会持续查询状态…';
   const t0 = Date.now();
   try{
-    let r = await api('/v1/images/tasks', {method:'POST',
-      body: JSON.stringify({prompt, size: $('imgSize').value, timeout:600})});
+    let r = await api('/v1/images/tasks', {method:'POST', headers: {'Idempotency-Key': admissionKey},
+      body: JSON.stringify(payload)});
     const taskId = r.id;
     const deadline = Date.now() + 15 * 60 * 1000;
     let failures = 0;
     while (r.status !== 'completed') {
       if (Date.now() >= deadline) throw new Error('等待超过 15 分钟，请在任务记录查看结果，勿重复提交');
-      if (r.status === 'failed') throw new Error(r.error || '图片生成失败');
+      if (r.status === 'failed') { generationAdmissions.delete('image'); throw new Error(r.error || '图片生成失败'); }
+      if (r.status === 'unknown') throw new Error('任务结果未知。请检查任务记录，勿新建重复请求。');
       box.textContent = `任务 ${taskId} · ${r.status} · 已等待 ${Math.floor((Date.now()-t0)/1000)} 秒`;
       await new Promise(resolve => setTimeout(resolve, 3000));
       try {
@@ -2159,6 +2451,7 @@ async function runImage(){
         if (++failures >= 6) throw new Error('状态查询暂时失败，请在任务记录查看，勿重复提交');
       }
     }
+    generationAdmissions.delete('image');
     const it = r.data[0];
     box.innerHTML = `<b style="color:var(--ok)">✓ 生成成功</b>
       <span class="mono" style="color:var(--muted);margin-left:10px">${((Date.now()-t0)/1000).toFixed(1)}s · ${fmtBytes(it.bytes)}</span>
@@ -2172,19 +2465,23 @@ async function runImage(){
 
 async function runVideo(){
   const btn = $('vidBtn'), box = $('vidRes');
+  if (btn.disabled) return;
   const prompt = $('vidPrompt').value.trim();
   if (!prompt) return toast('请输入提示词', 'warn');
+  const payload = {prompt, duration: parseInt($('vidDur').value) || 5, size: $('vidSize').value};
+  const admissionKey = generationAdmission('video', payload);
+  if (!admissionKey) return;
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>生成中…';
   box.className = 'result show';
   box.innerHTML = '<span class="spin"></span>正在创建视频任务…';
   const t0 = Date.now();
   try{
-    const t = await api('/v1/videos', {method:'POST', body: JSON.stringify({
-      prompt, duration: parseInt($('vidDur').value) || 5, size: $('vidSize').value})});
+    const t = await api('/v1/videos', {method:'POST', headers: {'Idempotency-Key': admissionKey}, body: JSON.stringify(payload)});
     const tick = async () => {
       const s = await api('/v1/videos/' + t.id);
       const el = ((Date.now()-t0)/1000).toFixed(0);
       if (s.status === 'succeeded' || s.status === 'completed'){
+        generationAdmissions.delete('video');
         const vurl = (s.result && s.result.url) || s.url || '';
         const vbytes = (s.result && s.result.bytes) || 0;
         box.innerHTML = `<b style="color:var(--ok)">✓ 生成成功</b>
@@ -2194,6 +2491,7 @@ async function runVideo(){
         btn.disabled = false; btn.textContent = '开始生成视频';
         loadMedia(); loadTasks();
       }else if (s.status === 'failed'){
+        generationAdmissions.delete('video');
         box.innerHTML = `<b style="color:var(--bad)">✗ 生成失败</b><pre class="out">${esc(s.error||'')}</pre>`;
         btn.disabled = false; btn.textContent = '开始生成视频';
       }else{
@@ -2349,7 +2647,12 @@ async function loadStatus(){
   }
 }
 
-function refreshAll(){ loadStatus(); loadPool(); loadApikey(); loadRepoStatus(false); }
+async function refreshAll(){
+  try{ await loadPrincipal(); }
+  catch(e){ CURRENT = null; applyRole(); return; }
+  loadStatus(); loadPool(); loadApikey();
+  if (CURRENT.role === 'admin') loadRepoStatus(false);
+}
 
 refreshAll();
 setInterval(() => {
@@ -2357,7 +2660,7 @@ setInterval(() => {
   if ($('tab-tasks').classList.contains('active')) loadTasks();
 }, 8000);
 setInterval(() => {
-  loadRepoStatus(false);
+  if (CURRENT && CURRENT.role === 'admin') loadRepoStatus(false);
 }, 60000);
 </script>
 </body>

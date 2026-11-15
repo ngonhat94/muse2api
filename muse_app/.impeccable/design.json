@@ -1,0 +1,12 @@
+{
+  "name": "Muse dashboard",
+  "source": "User-pinned 9Router dashboard reference; native Flutter implementation",
+  "tokens": {
+    "canvas": "#111113", "surface": "#19191C", "raised": "#232326",
+    "selected": "#382923", "accent": "#F4A27C", "text": "#F2F2F3",
+    "muted": "#B1B1BA", "border": "#38383F", "success": "#86D9AC",
+    "sidebarWidth": 248, "mobileBreakpoint": 800, "cardRadius": 10,
+    "spacing": [8, 16, 24]
+  },
+  "reference": "https://raw.githubusercontent.com/decolua/9router/1fe586bb/images/9router.png"
+}
