@@ -7,6 +7,26 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import contextmanager
+from types import SimpleNamespace
+
+
+@contextmanager
+def synthetic_deploy_path(module, root):
+    """Map only this fixture's lexical path; retain all real filesystem checks.
+
+    Local scratch ancestors may contain dots/spaces forbidden on a real VPS.
+    Never patch the shared re module or bypass prepare/private validation.
+    """
+    real_fullmatch = module.re.fullmatch
+
+    def fullmatch(pattern, value, *args, **kwargs):
+        if pattern == r'/[A-Za-z0-9_/-]+' and value == str(root):
+            value = '/synthetic/deploy'
+        return real_fullmatch(pattern, value, *args, **kwargs)
+
+    with patch.object(module, 're', SimpleNamespace(fullmatch=fullmatch)):
+        yield
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,6 +41,24 @@ class DeployTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_fixture_mapping_preserves_production_path_and_private_checks(self):
+        module = self.load()
+        with tempfile.TemporaryDirectory(prefix='deploy.fixture ') as tmp:
+            root = self.fixture(tmp)
+            with self.assertRaisesRegex(ValueError, 'unsafe deploy path'):
+                module.prepare(root)
+            original_re = module.re
+            with synthetic_deploy_path(module, root):
+                module.prepare(root)
+                with self.assertRaisesRegex(ValueError, 'unsafe deploy path'):
+                    module.prepare(root / 'other.invalid')
+                (root / 'config/.env').chmod(0o644)
+                with self.assertRaisesRegex(ValueError, 'owner-only'):
+                    module.prepare(root)
+            self.assertIs(module.re, original_re)
+            with self.assertRaisesRegex(ValueError, 'unsafe deploy path'):
+                module.prepare(root)
+
     def test_unprepared_target_fails_before_docker(self):
         module = self.load()
         with tempfile.TemporaryDirectory() as tmp, patch.object(module.subprocess, 'run') as run:
@@ -32,7 +70,7 @@ class DeployTests(unittest.TestCase):
         module = self.load()
         with tempfile.TemporaryDirectory() as tmp:
             root = self.fixture(tmp)
-            with patch.object(module, 'run', return_value='legacy-container') as run:
+            with synthetic_deploy_path(module, root), patch.object(module, 'run', return_value='legacy-container') as run:
                 with self.assertRaisesRegex(ValueError, 'legacy'):
                     module.deploy(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10')
                 self.assertEqual(run.call_count, 1)
@@ -145,7 +183,7 @@ class DeployTests(unittest.TestCase):
                     running[0] = True
                     active[0] = kwargs['env']['MUSE2API_DEPLOY_IMAGE']
                 return subprocess.CompletedProcess(args, 0)
-            with patch.object(module, 'run', side_effect=fake), patch.object(module.subprocess, 'run', side_effect=compose), patch.object(module.time, 'sleep'):
+            with synthetic_deploy_path(module, root), patch.object(module, 'run', side_effect=fake), patch.object(module.subprocess, 'run', side_effect=compose), patch.object(module.time, 'sleep'):
                 if fail_new:
                     with self.assertRaises(RuntimeError):
                         module.deploy(root, 'a'*40, new_id, '1.6.10')

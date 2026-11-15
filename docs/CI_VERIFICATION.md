@@ -1,5 +1,61 @@
 # CI local verification evidence
 
+## Async-image runner timing fix (2026-11-15)
+
+Investigated clean HEAD `88be6b89521bdcee246312f3c97ebc6d70486b41`.
+The Ubuntu/Python 3.13.18 failure occurs in the guarded Python step, before
+Docker or SSH; it does not diagnose `VPS_KNOWN_HOSTS`. Production
+`images_generations` dispatches `_queue_image`, which starts a worker and returns
+202 without joining it. No production/security/workflow changes were needed.
+
+The old test released generation after 250 ms and required total request time
+below 200 ms. Injecting 300 ms before ASGI dispatch deterministically reproduced
+`async_generation_http=202 returned_before_completion=False` and exit 1 on the
+old test. This demonstrates a false failure, not a production synchronous route.
+The replacement asserts causality: a worker has entered generation, HTTP has
+returned 202, and generation is still blocked on the unreleased event. Independent
+request execution allows a synchronous event-loop-blocking mutation to fail.
+Five/ten/fifteen-second waits are deadlock watchdogs, not latency requirements.
+All application workers are released and joined in `finally`, including storage
+and admission cleanup after their terminal task update, before HOME deletion.
+The threading proxy is module-local; executor thread creation is not patched.
+
+Local evidence uses scratch `ci-clean-venv` Python **3.13.0**, not Ubuntu 3.13.18:
+
+- Injected 300 ms request overhead: old test exit 1; revised test exit 0.
+- Mutated `_queue_image` to join its real worker while still returning HTTP 202:
+  revised test exit 1, `image endpoint still synchronous`; no remaining threads.
+- Injected an assertion before release plus 300 ms of post-release generation:
+  expected assertion exit 1, no remaining threads and no temporary-HOME error.
+- Revised unmodified offline script: **20/20** fresh-process repetitions passed.
+- Resumed exact `tools/ci_backend.py`: **exit 0, 41 guarded scripts, 6 explicit
+  browser/socket exclusions**, using scratch `RUNNER_TEMP`, `TMPDIR` and
+  `MUSE2API_TEST_TMP`. The earlier deployment-fixture failure was reproduced
+  (1 failure, 4 errors) and corrected only in `tests/test_deploy.py`: a module-local
+  mock maps the exact fixture root to a permitted lexical path. Real ownership,
+  permissions, symlink, authority, release-ID and filesystem checks still run;
+  production `tools/deploy_remote.py` is unchanged. **11 deployment tests pass**,
+  including a dotted/spaced fixture proving production path rejection, other-path
+  rejection, private-file rejection, and mock restoration.
+- Separate full-inventory diagnostic: **41/41 passed**. Repeated focused test:
+  **20/20 passed** again. Rechecked 300 ms delay: exit 0; synchronous mutation and
+  injected assertion: expected exit 1, both `remaining_threads_after_failure=set()`.
+- All **5 Node scripts** passed; `git diff --check` passed.
+
+Raw files under `/Users/nhatngo/.hermes/cache/scratch/`:
+`async-image-probe.py`, `async-image-verify.py`, `async-image-red-slow.log`,
+`async-image-green-slow.log`, `async-image-sync-negative.log`,
+`async-image-assertion-cleanup.log`, `async-image-repeat.log`,
+`async-image-full-backend.log`, `async-image-inventory.log`, `async-image-node.log`.
+Resume evidence: `async-image-resume-backend.log`, `async-image-resume-slow.log`,
+`async-image-resume-sync.log`, `async-image-resume-assertion.log`; inventory,
+repeat and Node logs above were refreshed. `pip check` reports no broken requirements.
+Scratch evidence expires. Reproduce the standard gate with the commands in
+CI.md; synthetic fixtures now also work in dotted/spaced scratch paths.
+Hosted Linux rerun and parent
+independent verification remain pending. No live Muse/app, network, Docker,
+SSH/deployment, credential access, global install, commit or push was performed.
+
 ## Auto-deployment revision (2026-11-15)
 
 Current workflow adds push-main-only pinned SSH deployment after tests/build.
