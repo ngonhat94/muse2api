@@ -1,5 +1,20 @@
 # CI local verification evidence
 
+## Auto-deployment revision (2026-11-15)
+
+Current workflow adds push-main-only pinned SSH deployment after tests/build.
+Earlier sections below describe the previous build-only revision, not current
+activation. New deployment tests use synthetic command mocks, not a VPS.
+Required activation: VPS_KNOWN_HOSTS, explicitly prepared VPS_DEPLOY_PATH and
+operator bootstrap/cutover approvals; see DEPLOYMENT.md. No remote execution,
+commit, staging, push or secret reading occurred. Docker build remains blocked
+by unavailable daemon and missing buildx. Verified: guarded backend runner exit 0
+(41 scripts, 6 explicit exclusions); 10 synthetic deployment tests included; all
+5 Node suites exit 0; actionlint 1.7.12 (shellcheck disabled), bash -n and git
+diff --check exit 0. Graphify update exit 0. Evidence: scratch
+`ci-deploy-backend.log`, `ci-deploy-graph.log`. No hosted run URL or image/startup
+success is claimed.
+
 ## Current server-only revision (2026-11-15)
 
 The user narrowed automatic builds to the server. The current workflow has only

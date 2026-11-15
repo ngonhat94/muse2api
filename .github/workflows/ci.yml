@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # Never interrupt an active production deployment.
 
 jobs:
   backend:
@@ -41,5 +41,24 @@ jobs:
           for test in tests/test_*.cjs tests/test_*.mjs; do
             node "$test"
           done
-      - name: Build muse2api server image (no publish or startup)
-        run: docker build --pull --tag muse2api-ci:check --file Dockerfile .
+      - name: Build immutable server image (no startup)
+        run: >-
+          docker build --pull --tag muse2api-ci:check --file Dockerfile .
+          --label org.opencontainers.image.revision="$GITHUB_SHA"
+          --label org.muse2api.storage-contract=muse2api-storage-v1
+      - name: Transfer and deploy tested image over pinned SSH
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        timeout-minutes: 15
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          image_id=$(docker image inspect --format '{{.Id}}' muse2api-ci:check)
+          version=$(python -c 'import json; print(json.load(open("version.json"))["version"])')
+          docker save --output deploy-image.tar muse2api-ci:check
+          bash tools/deploy_ssh.sh "$GITHUB_SHA" "$image_id" "$version"

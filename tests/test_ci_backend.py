@@ -42,12 +42,16 @@ class CiBackendTests(unittest.TestCase):
         jobs = [line.strip().removesuffix(':') for line in workflow.split('jobs:\n', 1)[1].splitlines()
                 if line.startswith('  ') and not line.startswith('   ') and line.endswith(':')]
         self.assertEqual(jobs, ['backend'])
+        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main'", workflow)
+        self.assertIn('cancel-in-progress: false', workflow)
+        self.assertIn('bash tools/deploy_ssh.sh', workflow)
+        self.assertIn('VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}', workflow)
         self.assertIn('python tools/ci_backend.py', workflow)
         self.assertIn('tests/test_*.cjs tests/test_*.mjs', workflow)
         build = 'docker build --pull --tag muse2api-ci:check --file Dockerfile .'
         self.assertIn(build, workflow)
         self.assertGreater(workflow.index(build), workflow.index('node "$test"'))
-        for forbidden in ('flutter', 'muse_app', 'docker push', 'docker run', 'secrets.', 'upload-artifact'):
+        for forbidden in ('flutter', 'muse_app', 'docker push', 'docker run', 'upload-artifact'):
             self.assertNotIn(forbidden, workflow.lower())
 
     def test_docker_server_sources_compile_and_cover_local_imports(self):

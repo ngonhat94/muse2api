@@ -31,6 +31,18 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
   def guarded_popen(args, *a, **kw):
    if isinstance(args, list) and args and args[0] == sys.executable and target.endswith('test_tenant_review_blockers.py'):
     return real_popen(args, *a, **kw)
+   if (target.endswith('test_deploy.py') and isinstance(args, list)
+       and args[:2] == ['bash', str(ROOT/'tools/deploy_ssh.sh')]
+       and kw.get('env', {}).get('VPS_KNOWN_HOSTS') == ''
+       and kw.get('env', {}).get('VPS_DEPLOY_PATH') == '/tmp/unsafe;touch NO'):
+    return real_popen(args, *a, **kw)
+   if (target.endswith('test_deploy.py') and isinstance(args, list)
+       and args[:2] == ['bash', str(ROOT/'tools/deploy_ssh.sh')]
+       and kw.get('env', {}).get('VPS_HOST') == 'example.invalid'
+       and kw.get('env', {}).get('VPS_SSH_KEY') == 'synthetic'):
+    mock = Path(kw['env']['PATH'].split(os.pathsep)[0]) / 'ssh'
+    if mock.read_text() == '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\ncat >/dev/null\n':
+     return real_popen(args, *a, **kw)
    return deny()
   stack.enter_context(patch.object(subprocess,'Popen',guarded_popen))
   sys.argv=[target]+sys.argv[2:]

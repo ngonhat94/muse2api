@@ -1,0 +1,47 @@
+# Only used by the reviewed SSH deployment; never builds on the VPS.
+services:
+  muse2api:
+    image: ${MUSE2API_DEPLOY_IMAGE:?immutable image ID required}
+    container_name: muse2api-production
+    restart: unless-stopped
+    init: true
+    user: "${MUSE2API_DEPLOY_UID:?}:${MUSE2API_DEPLOY_GID:?}"
+    command: ["/bin/sh", "-c", "umask 077; exec python -m uvicorn app:app --host 0.0.0.0 --port 18610 --workers 1"]
+    ports:
+      - "127.0.0.1:18610:18610"
+    volumes:
+      - type: bind
+        source: ${MUSE2API_DEPLOY_ROOT:?}/data
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MUSE2API_DEPLOY_ROOT:?}/profiles
+        target: /app/profiles
+        bind:
+          create_host_path: false
+      # Directory mount permits atomic .env replacement on admin-key rotation.
+      - type: bind
+        source: ${MUSE2API_DEPLOY_ROOT:?}/config
+        target: /app/runtime
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MUSE2API_DEPLOY_ROOT:?}/data
+        target: /app/runtime/data
+        bind:
+          create_host_path: false
+    environment:
+      HOME: /app/runtime
+      MUSE2API_HOME: /app/runtime
+      MUSE2API_PROFILE_ROOT: /app/profiles
+      MUSE2API_LEDGER_INITIALIZE: '0'
+    shm_size: '2gb'
+    stop_grace_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

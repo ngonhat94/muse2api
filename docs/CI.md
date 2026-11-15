@@ -1,4 +1,6 @@
-# Server-only automatic CI
+# Server-only automatic CI and gated deployment
+
+Deployment activation and existing-install limitations: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 For now `.github/workflows/ci.yml` runs **only the muse2api server** on every
 `push`, `pull_request` and manual `workflow_dispatch`, without branch/path filters.
@@ -12,7 +14,7 @@ on the default branch. No staging, commit, push or dispatch was performed.
 One `backend` job runs on Ubuntu 24.04, with a 30-minute timeout:
 
 1. Install Python 3.13 root `requirements.txt` and use Node 22.
-2. `python tools/ci_backend.py`: 40 inventoried Python scripts in independent
+2. `python tools/ci_backend.py`: 41 inventoried Python scripts in independent
    guarded processes, each with a 120-second timeout. Unknown Python tests fail
    inventory validation rather than silently escaping coverage.
 3. Run all five `tests/test_*.cjs` / `tests/test_*.mjs` synthetic admin suites.
@@ -23,8 +25,10 @@ The image uses the existing `python:3.11-slim-bookworm` base, not the Python 3.1
 host test interpreter. Docker installs Chromium/fonts/system packages and Python
 dependencies, but does **not** execute the image CMD, launch Chromium/the server
 or contact Muse. Dependency/image/package downloads require public network access.
-This is a build check, **not** deployment or a restart of an existing server.
-There is no registry login, push, image/container execution or release step.
+PRs, non-main pushes and manual dispatch stop at the build check. **Push main**
+then transfers the exact image via pinned SSH for gated deployment; see
+[DEPLOYMENT.md](DEPLOYMENT.md) for required known-host secret, explicit path,
+bootstrap and legacy-cutover approval. No registry login/push is used.
 
 The Dockerfile source list includes authority, idempotency, operations, protection
 and tenant modules required by the current server. `.dockerignore` defaults to
@@ -35,7 +39,8 @@ application, and validate transitive local imports. This checks source packaging
 not Docker layers or Linux/browser compatibility.
 
 **No downloadable artifacts are uploaded.** The `muse2api-ci:check` image exists
-only on the disposable runner and disappears with it. Previous client artifact
+on the disposable runner; push-main deployments also retain the transferred image
+and revision directory on the prepared VPS. No downloadable Actions artifacts exist. Previous client artifact
 names/7-day retention no longer apply to new runs. Existing historical artifacts
 are not deleted by this change.
 
@@ -75,9 +80,9 @@ docker build --pull --tag muse2api-ci:check --file Dockerfile .
 ## Safety and publication
 
 Read-only `contents: read`, nonpersisted checkout credentials, commit-pinned
-actions, requirements-keyed pip cache, cancelable concurrency per event/ref or PR.
-No `pull_request_target`, credentials, signing, publish, deploy or production
-startup. No Flutter SDK or frontend source changes are needed for this workflow.
+actions, requirements-keyed pip cache, noncancelable concurrency per event/ref or PR.
+No `pull_request_target`, frontend signing or registry publish. Production SSH
+secrets are scoped to the push-main deployment step only. No Flutter SDK or frontend source changes are needed for this workflow.
 Server dependency constraints and the existing base tag are not immutable locks;
 `--pull` follows the base tag, so future upstream package changes can affect builds.
 
