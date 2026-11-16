@@ -97,9 +97,11 @@ try:
         fail('IMAGE must name a reviewed custom local image, default muse2api:bootstrap.')
     # Recheck actual on-disk state; never trust an earlier paste/check.
     empty_state()
-    legacy = docker('container', 'inspect', '--format', '{{.Id}}', 'muse2api')
-    if not re.fullmatch(r'[0-9a-f]{64}', legacy):
-        fail('Legacy muse2api must exist with an exact full container ID before bootstrap; no approvals written.')
+    # A fresh host has no legacy container. Existing installs still require an
+    # exact-ID approval so deployment cannot stop an unrelated/replaced runtime.
+    legacy = docker('ps', '-aq', '--no-trunc', '--filter', 'name=^/muse2api$')
+    if legacy and not re.fullmatch(r'[0-9a-f]{64}', legacy):
+        fail('Legacy muse2api lookup returned an invalid container ID; no approvals written.')
     immutable = docker('image', 'inspect', '--format', '{{.Id}}', image)
     if not re.fullmatch(r'sha256:[0-9a-f]{64}', immutable):
         fail('Reviewed image is missing or has an invalid immutable ID; build/load custom muse2api:bootstrap first.')
@@ -124,16 +126,23 @@ try:
         info = (root/name).lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or not info.st_size:
             fail('Bootstrap output missing/unsafe: '+name+'; reconcile privately; no approvals issued.')
-    if docker('container', 'inspect', '--format', '{{.Id}}', 'muse2api') != legacy:
+    current_legacy = docker('ps', '-aq', '--no-trunc', '--filter', 'name=^/muse2api$')
+    if current_legacy != legacy:
         fail('Legacy container changed during bootstrap; no approvals issued. Reconcile offline.')
     # Approvals are exclusive, only after all initialization and output checks succeed.
-    for name, value in (('LEGACY_CUTOVER_APPROVED', legacy), ('DEPLOY_READY', 'muse2api-storage-v1')):
+    approvals = [('DEPLOY_READY', 'muse2api-storage-v1')]
+    if legacy:
+        approvals.insert(0, ('LEGACY_CUTOVER_APPROVED', legacy))
+    for name, value in approvals:
         with (root/name).open('x') as output:
             output.write(value+'\n')
             output.flush()
             os.fsync(output.fileno())
-    print('BOOTSTRAP COMPLETE: isolated state and exact-ID cutover approval prepared at '+str(root))
-    print('Old muse2api retained and untouched. No service started. Keep config/.env private; deploy/proxy verification remains separate.')
+    print('BOOTSTRAP COMPLETE: isolated state and deployment approval prepared at '+str(root))
+    if legacy:
+        print('Old muse2api retained and untouched. No service started. Keep config/.env private; deploy/proxy verification remains separate.')
+    else:
+        print('Fresh host initialized. No service started. Keep config/.env private; deploy/proxy verification remains separate.')
 except Exception as error:
     if isinstance(error, subprocess.TimeoutExpired):
         message = 'Docker timed out; inspect isolated state privately. No completion claimed; do not retry over partial state.'

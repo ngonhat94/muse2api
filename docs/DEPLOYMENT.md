@@ -121,8 +121,10 @@ standalone file [`tools/bootstrap_vps.sh`](../tools/bootstrap_vps.sh) once, only
 when authorizing fresh isolated replacement and exact-ID legacy cutover. Upload
 that file to the VPS; **do not copy/paste or split its embedded Python/heredoc**.
 It needs only Bash, Python 3, Docker access and an already built/loaded reviewed
-custom image `muse2api:bootstrap`. It does not build/download an image. Never use
-the old upstream `muse2api:latest`; review the custom image revision privately.
+custom image `muse2api:bootstrap`. It supports both a fresh host with no legacy
+`muse2api` container and an existing install; only the latter receives an exact-ID
+cutover approval. It does not build/download an image. Never use the old upstream
+`muse2api:latest`; review the custom image revision privately.
 
 Lưu file đã tải lên thành `~/bootstrap-muse-vps.sh` (hoặc chọn đường dẫn riêng),
 rồi chạy một lệnh, không `source`, không dán nội dung script:
@@ -141,8 +143,9 @@ key, ledger, marker, symlink, unexpected owner or permissions fails closed witho
 overwriting/chmod/chown/deleting existing state. An interrupted initialization
 requires private offline reconciliation, not a reset/retry flag.
 
-Before writing keys it requires the full ID of existing container `muse2api`,
-resolves the reviewed image to an immutable ID and runs an offline module compile
+Before writing keys it records the full ID when an existing `muse2api` container
+is present (and otherwise verifies that the host remains legacy-free), resolves
+the reviewed image to an immutable ID and runs an offline module compile
 and library-import probe. It generates a Fernet key and admin key only inside
 the one-shot network-disabled container, writes `.env` exclusively, then explicitly
 initializes authority and encrypted ledger without importing the server/config

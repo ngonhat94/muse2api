@@ -11,9 +11,9 @@ import json, os, pathlib, sys
 args = sys.argv[1:]
 with open(os.environ['BOOTSTRAP_TEST_LOG'], 'a') as out:
     out.write(json.dumps(args) + '\\n')
-if args[:2] == ['container', 'inspect']:
-    if os.environ.get('BOOTSTRAP_TEST_FAIL') == 'legacy': sys.exit(1)
-    print('d'*64)
+if args[:2] == ['ps', '-aq']:
+    if os.environ.get('BOOTSTRAP_TEST_FAIL') == 'legacy-query': sys.exit(1)
+    if os.environ.get('BOOTSTRAP_TEST_FAIL') != 'no-legacy': print('d'*64)
 elif args[:2] == ['image', 'inspect']:
     print('sha256:' + 'b'*64)
 elif '-c' in args:
@@ -65,11 +65,11 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(files['DEPLOY_READY'], b'muse2api-storage-v1\n')
         self.assertEqual(files['LEGACY_CUTOVER_APPROVED'], ('d'*64+'\n').encode())
         calls = [json.loads(line) for line in log.splitlines()]
-        self.assertEqual(calls[0][:2], ['container', 'inspect'])
+        self.assertEqual(calls[0][:2], ['ps', '-aq'])
         self.assertEqual(calls[1][:2], ['image', 'inspect'])
         self.assertIn('-c', calls[2])
         self.assertNotIn('-c', calls[3])
-        self.assertEqual(calls[4][:2], ['container', 'inspect'])
+        self.assertEqual(calls[4][:2], ['ps', '-aq'])
         for call in calls[2:4]:
             self.assertEqual(call[call.index('--network')+1], 'none')
             self.assertIn('sha256:'+'b'*64, call)
@@ -149,9 +149,16 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(authority['key_hash'], hashlib.sha256(values['MUSE2API_KEY'].encode()).hexdigest())
             self.assertEqual(json.loads((base/'data/generation-ledger.json').read_text())['format'], 'muse2api-accounts-fernet-v1')
 
-    def test_missing_legacy_fails_without_success_or_writes(self):
+    def test_fresh_host_without_legacy_initializes_without_cutover_approval(self):
         self.assertTrue((ROOT/'tools/bootstrap_vps.sh').exists(), 'standalone bootstrap missing')
-        result, files, log = self.invoke('legacy')
+        result, files, log = self.invoke('no-legacy')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('BOOTSTRAP COMPLETE', result.stdout)
+        self.assertIn('DEPLOY_READY', files)
+        self.assertNotIn('LEGACY_CUTOVER_APPROVED', files)
+
+    def test_legacy_lookup_failure_writes_nothing(self):
+        result, files, log = self.invoke('legacy-query')
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('BOOTSTRAP COMPLETE', result.stdout)
         self.assertEqual(files, {})
