@@ -59,7 +59,23 @@ jobs:
           VPS_SSH_MODE: ${{ vars.VPS_SSH_MODE }}
         run: |
           set -euo pipefail
-          image_id=$(docker image inspect --format '{{.Id}}' muse2api-ci:check)
+          # BuildKit/containerd can expose a manifest-list ID before export while
+          # the daemon that loads docker save identifies the imported image by
+          # the single-platform manifest digest. Read that digest from the exact
+          # archive we transfer so the remote identity check is portable.
           version=$(python -c 'import json; print(json.load(open("version.json"))["version"])')
           docker save --output deploy-image.tar muse2api-ci:check
+          image_id=$(python - <<'PY'
+          import json, tarfile
+          with tarfile.open('deploy-image.tar', 'r') as archive:
+              index = json.load(archive.extractfile('index.json'))
+          manifests = index.get('manifests') or []
+          if len(manifests) != 1:
+              raise SystemExit('expected exactly one exported image manifest')
+          digest = manifests[0].get('digest', '')
+          if not digest.startswith('sha256:') or len(digest) != 71:
+              raise SystemExit('invalid exported image manifest digest')
+          print(digest)
+          PY
+          )
           bash tools/deploy_ssh.sh "$GITHUB_SHA" "$image_id" "$version"

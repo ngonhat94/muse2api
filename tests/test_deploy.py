@@ -238,6 +238,14 @@ class DeployTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     module.legacy_guard(root)
 
+    def test_workflow_uses_exported_manifest_digest_for_remote_identity(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn("tarfile.open('deploy-image.tar', 'r')", workflow)
+        self.assertIn("index = json.load(archive.extractfile('index.json'))", workflow)
+        self.assertNotIn("image_id=$(docker image inspect --format '{{.Id}}'", workflow)
+        self.assertLess(workflow.index('docker save --output deploy-image.tar'),
+                        workflow.index("tarfile.open('deploy-image.tar', 'r')"))
+
     def test_transport_rejects_missing_pin_and_injection_without_commands(self):
         script = ROOT / 'tools/deploy_ssh.sh'
         self.assertTrue(script.is_file(), 'pinned transport missing')
