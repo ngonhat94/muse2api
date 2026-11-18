@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:http/http.dart' as http;
+
 import '../../../../core/errors/app_failure.dart';
 import '../../domain/entities/server_connection.dart';
 import '../../domain/repositories/connection_repository.dart';
@@ -20,9 +24,16 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
       await remote.verify(connection);
     } on AppFailure {
       rethrow;
+    } on TimeoutException {
+      throw const AppFailure('Server phản hồi quá chậm. Vui lòng thử lại sau.');
+    } on http.ClientException {
+      // Browsers cannot distinguish offline/TLS/CORS failures. Never infer 401.
+      throw const AppFailure(
+        'Không kết nối được với server. Kiểm tra mạng rồi thử lại; nếu vẫn lỗi, liên hệ quản trị viên kiểm tra server và cấu hình CORS/HTTPS.',
+      );
     } catch (_) {
       throw const AppFailure(
-        'Không kết nối được. Kiểm tra URL, mạng và cấu hình CORS/HTTPS của server.',
+        'Server trả về phản hồi không hợp lệ. Vui lòng thử lại hoặc liên hệ quản trị viên.',
       );
     }
   }

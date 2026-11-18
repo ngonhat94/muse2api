@@ -99,12 +99,6 @@ app = FastAPI(title="muse2api", version="1.6.10")
 _origins = [o.strip() for o in (CFG.cors_origins or "").split(",") if o.strip()]
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-app.add_middleware(CORSMiddleware,
-                   allow_origins=["*"],
-                   allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-                   allow_headers=["*"],
-                   expose_headers=["*"],
-                   max_age=600)
 
 _RUNTIME_LOCK = None
 
@@ -534,6 +528,16 @@ class TenantRateMiddleware:
 
 
 app.add_middleware(TenantRateMiddleware)
+
+# Starlette adds each middleware outside the previous one. CORS must wrap
+# authentication/rate/idempotency short-circuits too, or browsers hide their
+# 401/429 responses as transport failures. Keep the existing bearer-only policy.
+app.add_middleware(CORSMiddleware,
+                   allow_origins=["*"],
+                   allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+                   allow_headers=["*"],
+                   expose_headers=["*"],
+                   max_age=600)
 
 
 @app.exception_handler(StorageQuotaExceeded)
