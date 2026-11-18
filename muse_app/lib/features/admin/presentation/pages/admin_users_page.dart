@@ -1,9 +1,61 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../connection/domain/entities/server_connection.dart';
 import '../../domain/repositories/admin_users_repository.dart';
 import '../cubit/admin_users_cubit.dart';
+
+// Scoped to the visible secret and connection: hiding the key or replacing the
+// session disposes pending clipboard feedback along with this widget.
+class _OneTimeApiKey extends StatefulWidget {
+  const _OneTimeApiKey({super.key, required this.apiKey});
+
+  final String apiKey;
+
+  @override
+  State<_OneTimeApiKey> createState() => _OneTimeApiKeyState();
+}
+
+class _OneTimeApiKeyState extends State<_OneTimeApiKey> {
+  bool _copying = false;
+
+  Future<void> _copy() async {
+    if (_copying) return;
+    setState(() => _copying = true);
+    final key = widget.apiKey;
+    var message = 'Đã sao chép API key';
+    try {
+      await Clipboard.setData(ClipboardData(text: key));
+    } catch (_) {
+      message =
+          'Không thể sao chép API key. Hãy chọn key và sao chép thủ công.';
+    }
+    if (!mounted || widget.apiKey != key) return;
+    setState(() => _copying = false);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(child: SelectableText(widget.apiKey)),
+      const SizedBox(width: 8),
+      IconButton(
+        tooltip: 'Sao chép API key',
+        onPressed: _copying ? null : _copy,
+        icon: _copying
+            ? const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.copy_outlined),
+      ),
+    ],
+  );
+}
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({
@@ -158,7 +210,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     children: [
                       const Text('LƯU KEY NGAY — chỉ hiển thị lần này:'),
                       const SizedBox(height: 8),
-                      SelectableText(state.oneTimeKey!),
+                      _OneTimeApiKey(
+                        key: ObjectKey(widget.connection),
+                        apiKey: state.oneTimeKey!,
+                      ),
                       TextButton(
                         onPressed: _cubit.dismissKey,
                         child: const Text('Đã lưu, ẩn key'),
