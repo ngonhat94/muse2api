@@ -29,6 +29,20 @@ class BrowserImportCubit extends Cubit<BrowserImportState> {
 
   Future<void> run(ServerConnection connection, bool Function() current) async {
     if (state.busy || !current()) return;
+    if (!bridge.supported) {
+      emit(
+        BrowserImportState(
+          message: switch (bridge.capability) {
+            BrowserImportCapability.unsupportedOrigin =>
+              'Trang hiện tại chưa được extension cho phép. Nhập tự động chỉ hỗ trợ $approvedBrowserImportOrigin. Domain riêng và preview không tự được tin cậy. Mở trang được hỗ trợ và đăng nhập lại; API key không được chuyển sang trang mới. Bạn vẫn có thể nhập cookie thủ công.',
+            BrowserImportCapability.unsupportedDevice =>
+              'Thiết bị di động chưa hỗ trợ cầu nối extension. Dùng Chrome/Edge trên máy tính tại $approvedBrowserImportOrigin hoặc nhập cookie thủ công.',
+            _ => 'Nhập từ trình duyệt chỉ hỗ trợ Chrome/Edge trên máy tính. Bạn vẫn có thể nhập cookie thủ công.',
+          },
+        ),
+      );
+      return;
+    }
     final generation = ++_generation;
     bool valid() => !isClosed && generation == _generation && current();
     emit(const BrowserImportState(busy: true, message: 'Đang tìm extension…'));

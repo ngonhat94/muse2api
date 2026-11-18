@@ -3,6 +3,8 @@ import '../../connection/domain/entities/server_connection.dart';
 
 class BrowserImport implements BrowserAccountImport {
   @override
+  BrowserImportCapability get capability => BrowserImportCapability.native;
+  @override
   bool get supported => false;
   @override
   Future<bool> available() async => false;
