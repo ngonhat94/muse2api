@@ -1,6 +1,7 @@
 import '../../../../app/dependencies.dart';
 import 'browser_import_button.dart';
 import 'get_cookies_guide.dart';
+import 'extension_download_button.dart';
 import '../../../../app/studio_theme.dart';
 import 'cookie_import_form.dart';
 import 'keepalive_status_section.dart';
@@ -209,6 +210,20 @@ class _AccountPageState extends State<AccountPage> {
             if (_showGuide)
               Builder(
                 builder: (guideContext) => GetCookiesGuide(
+                  download:
+                      connection != null &&
+                          context.read<AppDependencies?>() != null
+                      ? ExtensionDownloadButton(
+                          key: ObjectKey(connection),
+                          connection: connection,
+                          repository: context
+                              .read<AppDependencies>()
+                              .extensionDownload,
+                          saver: context
+                              .read<AppDependencies>()
+                              .extensionZipSaver,
+                        )
+                      : null,
                   onManualImport: connection == null || state.busy
                       ? null
                       : () {

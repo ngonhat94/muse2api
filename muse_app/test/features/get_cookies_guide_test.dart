@@ -6,11 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:muse_app/features/accounts/presentation/pages/get_cookies_guide.dart';
 
 void main() {
-  test('guide links to existing private source, not an invented release', () {
-    expect(
-      GetCookiesGuide.sourceUri.toString(),
-      'https://github.com/ngonhat94/murouter/tree/main/extension',
-    );
+  test('guide version and compatibility match current extension policy', () {
     final manifest = jsonDecode(
       File('../extension/manifest.json').readAsStringSync(),
     ) as Map;

@@ -1,4 +1,7 @@
 import '../features/accounts/data/browser_import_factory.dart';
+import '../features/accounts/data/repositories/extension_download_impl.dart';
+import '../features/accounts/data/extension_zip_saver.dart';
+import '../features/accounts/domain/repositories/extension_download.dart';
 import '../features/accounts/domain/repositories/browser_account_import.dart';
 import '../features/connection/data/repositories/client_config_repository_impl.dart';
 import '../features/connection/domain/repositories/client_config_repository.dart';
@@ -62,7 +65,9 @@ class AppDependencies {
     CredentialStore? credentialStore,
     HistoryRecordStore? historyStore,
     DesktopEngine? localEngine,
+    ExtensionZipSaver? zipSaver,
   }) {
+    extensionZipSaver = zipSaver ?? createExtensionZipSaver();
     pendingGenerations = PendingGenerationStore(preferences);
     desktopEngine = localEngine ?? createDesktopEngine();
     readLocalPreference = () async => preferences.getBool('desktop_local_mode');
@@ -86,6 +91,7 @@ class AppDependencies {
       return client;
     }
 
+    extensionDownload = ExtensionDownloadImpl(factory);
     clientConfig = ClientConfigRepositoryImpl(factory);
     final api = JsonApiClient(factory);
     adminUsers = AdminUsersRepositoryImpl(api);
@@ -147,6 +153,8 @@ class AppDependencies {
     DeviceReferenceFileSource(),
   );
   final BrowserAccountImport browserImport = createBrowserAccountImport();
+  late final ExtensionDownload extensionDownload;
+  late final ExtensionZipSaver extensionZipSaver;
   late final ClientConfigRepository clientConfig;
   late final PendingGenerationStore pendingGenerations;
   late final AdminUsersRepository adminUsers;
