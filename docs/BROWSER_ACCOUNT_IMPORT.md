@@ -1,5 +1,11 @@
 # Nhập tài khoản từ trình duyệt (extension 1.1.0)
 
+## Hướng dẫn trong Muse Studio
+
+Mở **Tài khoản → Get Cookies** để xem hướng dẫn tiếng Việt từng bước: lấy extension 1.1.0, cài vào Chrome/Edge, đăng nhập Muse cùng hồ sơ, xác nhận một lần và kiểm tra kết quả. Tab **Danh sách** giữ nguyên nút nhập từ trình duyệt; nút **Mở form nhập thủ công** trong hướng dẫn chuyển về form hiện có. Mở hướng dẫn không đọc cookie hoặc tự gửi yêu cầu nhập.
+
+Kho `ngonhat94/murouter` hiện là kho riêng: liên kết nguồn `extension/` yêu cầu quyền GitHub, không phải liên kết tải ZIP công khai. Người dùng không có quyền kho cần nhờ quản trị viên cung cấp ZIP 1.1.0 từ chức năng tải extension của hệ thống. Không có liên kết release 1.1.0 được công bố trong hướng dẫn, không nhúng API key trong URL và không hiển thị địa chỉ server cho người dùng thường.
+
 ## Cài đặt một lần
 
 1. Trên **Chrome hoặc Edge desktop**, tải `/admin/extension` từ server đang kết nối (endpoint yêu cầu Bearer auth; có thể dùng nút tải extension của admin UI hiện có), hoặc lấy thư mục `extension/` từ nhánh/PR này. Giải nén vào thư mục cố định. Không dùng bản 1.0.2.

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:muse_app/app/app.dart';
+import 'package:muse_app/features/accounts/presentation/pages/account_page.dart';
 import 'package:muse_app/app/dependencies.dart';
 import 'package:muse_app/app/shell.dart';
 import 'package:muse_app/features/connection/domain/entities/server_connection.dart';
@@ -245,8 +246,46 @@ void main() {
         await frames(tester);
         expect(find.text('Nhập tài khoản'), findsOneWidget);
         expect(find.text('Tài khoản Muse'), findsOneWidget);
-        await tester.tap(find.text('Nhập tài khoản'));
+        final callsBeforeGuide = calls.length;
+        await tester.tap(find.text('Get Cookies'));
         await frames(tester);
+        expect(find.text('Nhập phiên Muse an toàn'), findsOneWidget);
+        expect(find.text('1. Lấy extension 1.1.0'), findsOneWidget);
+        expect(find.text(defaultServerUrl, skipOffstage: false), findsNothing);
+        expect(find.text('Cookie string'), findsNothing);
+        expect(calls.length, callsBeforeGuide);
+        if (width < 800) {
+          await tester.tap(find.text('Thêm'));
+          await frames(tester);
+          expect(find.text('Đăng xuất'), findsOneWidget);
+          // Dismiss the navigation sheet without leaving the guide.
+          Navigator.of(tester.element(find.text('Đăng xuất'))).pop();
+          await frames(tester);
+        } else {
+          expect(find.text('Đăng xuất'), findsOneWidget);
+        }
+        final accountScroll = find
+            .descendant(
+              of: find.byType(AccountPage),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(
+          find.text('Mở form nhập thủ công'),
+          400,
+          scrollable: accountScroll,
+        );
+        expect(find.text('Nếu chưa nhập được'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.text('Mở form nhập thủ công'));
+        await tester.pump();
+        await tester.tap(find.text('Mở form nhập thủ công'));
+        await frames(tester);
+        await tester.scrollUntilVisible(
+          find.text('Cookie string'),
+          150,
+          scrollable: accountScroll,
+        );
         expect(find.text('Cookie string'), findsOneWidget);
         bloc.add(ConnectionDisconnected());
         await frames(tester);

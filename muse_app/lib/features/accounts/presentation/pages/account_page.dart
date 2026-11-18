@@ -1,5 +1,6 @@
 import '../../../../app/dependencies.dart';
 import 'browser_import_button.dart';
+import 'get_cookies_guide.dart';
 import '../../../../app/studio_theme.dart';
 import 'cookie_import_form.dart';
 import 'keepalive_status_section.dart';
@@ -26,6 +27,15 @@ class AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<AccountPage> {
   bool _showImport = false;
+  bool _showGuide = false;
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -165,273 +175,305 @@ class _AccountPageState extends State<AccountPage> {
     },
     builder: (context, state) {
       final connection = context.watch<ConnectionBloc>().state.connection;
-      return ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          ListHeader(
-            title: 'Tài khoản Muse',
-            loading: state.busy,
-            error: state.error,
-            onRefresh: connection == null
-                ? null
-                : () => context.read<AccountBloc>().add(
-                    AccountsLoaded(connection),
-                  ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4, bottom: 20),
-            child: Text(
-              'Quản lý tài khoản Muse, phiên và quota lưu đệm.',
-              style: TextStyle(color: StudioColors.muted),
+      return DefaultTabController(
+        length: 2,
+        child: ListView(
+          controller: _scroll,
+          padding: const EdgeInsets.all(24),
+          children: [
+            ListHeader(
+              title: 'Tài khoản Muse',
+              loading: state.busy,
+              error: state.error,
+              onRefresh: connection == null
+                  ? null
+                  : () => context.read<AccountBloc>().add(
+                      AccountsLoaded(connection),
+                    ),
             ),
-          ),
-          const Divider(),
-          const SizedBox(height: 20),
-          if (state.items.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Wrap(
-                spacing: 24,
-                runSpacing: 8,
-                children: [
-                  Text('${state.items.length} tài khoản'),
-                  Text(
-                    '${state.items.where((a) => a.enabled).length} đang bật',
-                  ),
-                  Text(
-                    '${state.items.where((a) => a.healthy == true).length} phiên đã xác nhận',
-                    style: const TextStyle(color: StudioColors.muted),
-                  ),
-                ],
-              ),
-            ),
-          if (state.message != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                state.message!,
-                style: const TextStyle(color: StudioColors.success),
-              ),
-            ),
-          if (connection == null)
             const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('Kết nối server để quản lý tài khoản.'),
-            )
-          else ...[
-            if (context.read<AppDependencies?>()?.browserImport
-                case final bridge? when bridge.supported)
-              BrowserImportButton(
-                key: ObjectKey(connection),
-                bridge: bridge,
-                connection: connection,
-                disabled: state.busy,
-              ),
-            if (context.read<AccountBloc>().manage.repository
-                is BatchKeepaliveRepository)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: state.busy
-                      ? null
-                      : () => _keepalive(connection, null),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Duy trì phiên hàng loạt'),
-                ),
-              ),
-            if (context.read<AccountBloc>().manage.repository
-                is KeepaliveStatusRepository)
-              KeepaliveStatusSection(
-                key: ObjectKey(connection),
-                accounts: context.read<AccountBloc>(),
-                connection: connection,
-                repository:
-                    context.read<AccountBloc>().manage.repository
-                        as KeepaliveStatusRepository,
-              ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: state.busy
-                    ? null
-                    : () => setState(() => _showImport = !_showImport),
-                icon: const Icon(Icons.person_add_outlined),
-                label: const Text('Nhập tài khoản'),
+              padding: EdgeInsets.only(top: 4, bottom: 20),
+              child: Text(
+                'Quản lý tài khoản Muse, phiên và quota lưu đệm.',
+                style: TextStyle(color: StudioColors.muted),
               ),
             ),
-            if (_showImport)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: CookieImportForm(
-                    key: ValueKey(connection),
-                    busy: state.busy,
-                    localMode: connection.isLocal,
-                    onSubmit: (label, cookies) {
-                      if (!identical(
-                            context.read<ConnectionBloc>().state.connection,
-                            connection,
-                          ) ||
-                          context.read<AccountBloc>().state.busy) {
-                        return;
-                      }
-                      context.read<AccountBloc>().add(
-                        AccountImported(connection, label, cookies),
-                      );
-                    },
+            TabBar(
+              onTap: (index) => setState(() => _showGuide = index == 1),
+              tabs: const [
+                Tab(text: 'Danh sách'),
+                Tab(text: 'Get Cookies'),
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (_showGuide)
+              Builder(
+                builder: (guideContext) => GetCookiesGuide(
+                  onManualImport: connection == null || state.busy
+                      ? null
+                      : () {
+                          DefaultTabController.of(guideContext).animateTo(0);
+                          setState(() {
+                            _showGuide = false;
+                            _showImport = true;
+                          });
+                          _scroll.jumpTo(0);
+                        },
+                ),
+              )
+            else ...[
+              if (state.items.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Wrap(
+                    spacing: 24,
+                    runSpacing: 8,
+                    children: [
+                      Text('${state.items.length} tài khoản'),
+                      Text(
+                        '${state.items.where((a) => a.enabled).length} đang bật',
+                      ),
+                      Text(
+                        '${state.items.where((a) => a.healthy == true).length} phiên đã xác nhận',
+                        style: const TextStyle(color: StudioColors.muted),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            if (state.items.isEmpty && !state.busy)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Chưa có tài khoản Muse.'),
-              ),
-            for (final account in state.items)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                account.label,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            Semantics(
-                              label: 'Bật tài khoản ${account.label}',
-                              child: Switch(
-                                value: account.enabled,
-                                onChanged: state.busy
-                                    ? null
-                                    : (enabled) =>
-                                          context.read<AccountBloc>().add(
-                                            AccountActed(
-                                              connection,
-                                              account.id,
-                                              enabled
-                                                  ? AccountAction.enable
-                                                  : AccountAction.disable,
-                                            ),
-                                          ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Text(
-                          account.healthy == true
-                              ? 'Phiên đã xác nhận'
-                              : account.healthy == false
-                              ? 'Cần kiểm tra phiên'
-                              : 'Chưa kiểm tra',
-                          style: TextStyle(
-                            color: account.healthy == true
-                                ? StudioColors.success
-                                : StudioColors.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Hết hạn dự kiến: ${formatDate(account.expiresAt)}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: StudioColors.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ExpansionTile(
-                          tilePadding: EdgeInsets.zero,
-                          title: const Text('Proxy tài khoản'),
-                          subtitle: Text(
-                            account.proxy?.server ?? 'Kết nối trực tiếp',
-                          ),
-                          children: [
-                            ProxyEditor(
-                              account: account,
-                              connection: connection,
-                              enabled: !state.busy,
-                              onSaved: () => context.read<AccountBloc>().add(
-                                AccountsLoaded(connection),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            TextButton.icon(
-                              onPressed: state.busy
-                                  ? null
-                                  : () => context.read<AccountBloc>().add(
-                                      AccountActed(
-                                        connection,
-                                        account.id,
-                                        AccountAction.test,
-                                      ),
-                                    ),
-                              icon: const Icon(Icons.verified_user_outlined),
-                              label: const Text('Kiểm tra phiên'),
-                            ),
-                            TextButton.icon(
-                              onPressed: state.busy
-                                  ? null
-                                  : () => context.read<AccountBloc>().add(
-                                      AccountActed(
-                                        connection,
-                                        account.id,
-                                        AccountAction.quota,
-                                      ),
-                                    ),
-                              icon: const Icon(Icons.data_usage),
-                              label: const Text('Quota'),
-                            ),
-                            TextButton.icon(
-                              onPressed: state.busy
-                                  ? null
-                                  : () => _keepalive(connection, account.id),
-                              icon: const Icon(Icons.sync_outlined),
-                              label: const Text('Duy trì phiên'),
-                            ),
-                            TextButton.icon(
-                              onPressed: state.busy
-                                  ? null
-                                  : () =>
-                                        _updateCookies(connection, account.id),
-                              icon: const Icon(Icons.cookie_outlined),
-                              label: const Text('Cập nhật cookie'),
-                            ),
-                            TextButton.icon(
-                              onPressed: state.busy
-                                  ? null
-                                  : () => _remove(connection, account.id),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .error,
-                              ),
-                              icon: const Icon(Icons.delete_outline),
-                              label: const Text('Xóa'),
-                            ),
-                          ],
-                        ),
-                        AccountQuotaSection(account: account),
-                      ],
+              if (state.message != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    state.message!,
+                    style: const TextStyle(color: StudioColors.success),
+                  ),
+                ),
+              if (connection == null)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Kết nối server để quản lý tài khoản.'),
+                )
+              else ...[
+                if (context.read<AppDependencies?>()?.browserImport
+                    case final bridge? when bridge.supported)
+                  BrowserImportButton(
+                    key: ObjectKey(connection),
+                    bridge: bridge,
+                    connection: connection,
+                    disabled: state.busy,
+                  ),
+                if (context.read<AccountBloc>().manage.repository
+                    is BatchKeepaliveRepository)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: state.busy
+                          ? null
+                          : () => _keepalive(connection, null),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Duy trì phiên hàng loạt'),
                     ),
                   ),
+                if (context.read<AccountBloc>().manage.repository
+                    is KeepaliveStatusRepository)
+                  KeepaliveStatusSection(
+                    key: ObjectKey(connection),
+                    accounts: context.read<AccountBloc>(),
+                    connection: connection,
+                    repository:
+                        context.read<AccountBloc>().manage.repository
+                            as KeepaliveStatusRepository,
+                  ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: state.busy
+                        ? null
+                        : () => setState(() => _showImport = !_showImport),
+                    icon: const Icon(Icons.person_add_outlined),
+                    label: const Text('Nhập tài khoản'),
+                  ),
                 ),
-              ),
+                if (_showImport)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: CookieImportForm(
+                        key: ValueKey(connection),
+                        busy: state.busy,
+                        localMode: connection.isLocal,
+                        onSubmit: (label, cookies) {
+                          if (!identical(
+                                context.read<ConnectionBloc>().state.connection,
+                                connection,
+                              ) ||
+                              context.read<AccountBloc>().state.busy) {
+                            return;
+                          }
+                          context.read<AccountBloc>().add(
+                            AccountImported(connection, label, cookies),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                if (state.items.isEmpty && !state.busy)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Chưa có tài khoản Muse.'),
+                  ),
+                for (final account in state.items)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    account.label,
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Semantics(
+                                  label: 'Bật tài khoản ${account.label}',
+                                  child: Switch(
+                                    value: account.enabled,
+                                    onChanged: state.busy
+                                        ? null
+                                        : (enabled) =>
+                                              context.read<AccountBloc>().add(
+                                                AccountActed(
+                                                  connection,
+                                                  account.id,
+                                                  enabled
+                                                      ? AccountAction.enable
+                                                      : AccountAction.disable,
+                                                ),
+                                              ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              account.healthy == true
+                                  ? 'Phiên đã xác nhận'
+                                  : account.healthy == false
+                                  ? 'Cần kiểm tra phiên'
+                                  : 'Chưa kiểm tra',
+                              style: TextStyle(
+                                color: account.healthy == true
+                                    ? StudioColors.success
+                                    : StudioColors.muted,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Hết hạn dự kiến: ${formatDate(account.expiresAt)}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: StudioColors.muted,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ExpansionTile(
+                              tilePadding: EdgeInsets.zero,
+                              title: const Text('Proxy tài khoản'),
+                              subtitle: Text(
+                                account.proxy?.server ?? 'Kết nối trực tiếp',
+                              ),
+                              children: [
+                                ProxyEditor(
+                                  account: account,
+                                  connection: connection,
+                                  enabled: !state.busy,
+                                  onSaved: () => context
+                                      .read<AccountBloc>()
+                                      .add(AccountsLoaded(connection)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: state.busy
+                                      ? null
+                                      : () => context.read<AccountBloc>().add(
+                                          AccountActed(
+                                            connection,
+                                            account.id,
+                                            AccountAction.test,
+                                          ),
+                                        ),
+                                  icon: const Icon(
+                                    Icons.verified_user_outlined,
+                                  ),
+                                  label: const Text('Kiểm tra phiên'),
+                                ),
+                                TextButton.icon(
+                                  onPressed: state.busy
+                                      ? null
+                                      : () => context.read<AccountBloc>().add(
+                                          AccountActed(
+                                            connection,
+                                            account.id,
+                                            AccountAction.quota,
+                                          ),
+                                        ),
+                                  icon: const Icon(Icons.data_usage),
+                                  label: const Text('Quota'),
+                                ),
+                                TextButton.icon(
+                                  onPressed: state.busy
+                                      ? null
+                                      : () =>
+                                            _keepalive(connection, account.id),
+                                  icon: const Icon(Icons.sync_outlined),
+                                  label: const Text('Duy trì phiên'),
+                                ),
+                                TextButton.icon(
+                                  onPressed: state.busy
+                                      ? null
+                                      : () => _updateCookies(
+                                          connection,
+                                          account.id,
+                                        ),
+                                  icon: const Icon(Icons.cookie_outlined),
+                                  label: const Text('Cập nhật cookie'),
+                                ),
+                                TextButton.icon(
+                                  onPressed: state.busy
+                                      ? null
+                                      : () => _remove(connection, account.id),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .error,
+                                  ),
+                                  icon: const Icon(Icons.delete_outline),
+                                  label: const Text('Xóa'),
+                                ),
+                              ],
+                            ),
+                            AccountQuotaSection(account: account),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ],
           ],
-        ],
+        ),
       );
     },
   );
