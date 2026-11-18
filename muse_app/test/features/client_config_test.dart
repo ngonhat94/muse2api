@@ -177,36 +177,37 @@ void main() {
     await bloc.close();
   });
   for (final width in [390.0, 1280.0]) {
-    testWidgets('key-only public login at $width ignores saved URL', (
-      tester,
-    ) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = Size(width, 1000);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-      SharedPreferences.setMockInitialValues({});
-      final deps = AppDependencies(
-        (await tester.runAsync(() => SharedPreferences.getInstance()))!,
-        credentialStore: MemoryCredentialStore(),
-      );
-      final bloc = ConnectionBloc(deps.connectServer);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: BlocProvider.value(
-            value: bloc,
-            child: const Scaffold(
-              body: ConnectionPage(savedAddress: 'https://stale.example'),
+    testWidgets(
+      'technical connection page at $width is hidden before verification',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(width, 1000);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        SharedPreferences.setMockInitialValues({});
+        final deps = AppDependencies(
+          (await tester.runAsync(() => SharedPreferences.getInstance()))!,
+          credentialStore: MemoryCredentialStore(),
+        );
+        final bloc = ConnectionBloc(deps.connectServer);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BlocProvider.value(
+              value: bloc,
+              child: const Scaffold(
+                body: ConnectionPage(savedAddress: 'https://stale.example'),
+              ),
             ),
           ),
-        ),
-      );
-      expect(find.byType(TextField), findsOneWidget);
-      expect(find.text(defaultServerUrl), findsOneWidget);
-      expect(find.text('Lưu cấu hình chung'), findsNothing);
-      expect(find.text('https://stale.example'), findsNothing);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-      await tester.runAsync(() => bloc.close());
-    });
+        );
+        expect(find.byType(TextField), findsNothing);
+        expect(find.text(defaultServerUrl), findsNothing);
+        expect(find.text('Lưu cấu hình chung'), findsNothing);
+        expect(find.text('https://stale.example'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(() => bloc.close());
+      },
+    );
   }
 }

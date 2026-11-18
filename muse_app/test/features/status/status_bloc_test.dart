@@ -23,6 +23,16 @@ void main() {
   late PendingStatusRepository repository;
   late ServerStatusBloc bloc;
   setUp(() {
+    for (final connection in [a, b]) {
+      connection.attachPrincipal(
+        const ServerPrincipal(
+          id: 'fixture',
+          label: 'Fixture',
+          role: 'admin',
+          capabilities: {'global_settings': true},
+        ),
+      );
+    }
     repository = PendingStatusRepository();
     bloc = ServerStatusBloc(LoadServerStatus(repository));
   });
@@ -46,10 +56,8 @@ void main() {
     expect(bloc.state.snapshot?.mediaCount, 8);
     expect(bloc.state.updatedAt, isNotNull);
     expect(bloc.state.stale, false);
-    // An equivalent identity must not discard the current server snapshot.
-    bloc.connectionChanged(
-      const ServerConnection(baseUrl: 'https://a.test', apiKey: 'a'),
-    );
+    // Reusing the verified connection retains the current snapshot.
+    bloc.connectionChanged(a);
     final refresh = bloc.refresh();
     repository.calls[1].completeError(Exception('private server detail'));
     await refresh;

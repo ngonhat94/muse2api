@@ -1,4 +1,5 @@
 import '../../../../app/studio_theme.dart';
+import '../../domain/entities/connection_permissions.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -45,6 +46,12 @@ class _ConnectionPageState extends State<ConnectionPage> {
     },
     builder: (context, state) {
       final bloc = context.read<ConnectionBloc>();
+      if (!canShowConnectionTools(
+        state.connection,
+        supportsLocal: bloc.supportsLocal,
+      )) {
+        return const SizedBox.shrink();
+      }
       final busy =
           state.status == ConnectionStatus.connecting || bloc.loadingConfig;
       final connected =

@@ -1,4 +1,5 @@
 import 'studio_theme.dart';
+import '../features/connection/domain/entities/connection_permissions.dart';
 import 'dependencies.dart';
 import '../features/admin/domain/repositories/admin_users_repository.dart';
 import '../core/presentation/generation_recovery_cubit.dart';
@@ -92,9 +93,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     (Icons.auto_fix_high_outlined, 'Văn bản thành prompt'),
     (Icons.admin_panel_settings_outlined, 'Người dùng & API key'),
   ];
+  bool _canSelect(int index) {
+    final bloc = context.read<ConnectionBloc>();
+    if (index == 6) {
+      return canShowConnectionTools(
+        bloc.state.connection,
+        supportsLocal: bloc.supportsLocal,
+      );
+    }
+    if (index == 7) return canConfigureServer(bloc.state.connection);
+    if (index == 10) return canManageUsers(bloc.state.connection);
+    return true;
+  }
+
   void _select(int index) {
-    if (index == 10 &&
-        !canManageUsers(context.read<ConnectionBloc>().state.connection)) {
+    if (!_canSelect(index)) {
       return;
     }
     context.read<TaskBloc>().add(CollectionPaused());
@@ -209,10 +222,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               const Divider(),
             ],
             for (var i = 3; i < _destinations.length; i++)
-              if (i != 10 ||
-                  canManageUsers(
-                    context.read<ConnectionBloc>().state.connection,
-                  ))
+              if (_canSelect(i))
                 ListTile(
                   leading: Icon(_destinations[i].$1),
                   title: Text(_destinations[i].$2),
@@ -255,7 +265,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     },
     child: LayoutBuilder(
       builder: (context, constraints) {
+        context.watch<ConnectionBloc>();
         final wide = constraints.maxWidth >= 800;
+        final selected = _canSelect(_selected) ? _selected : 0;
         return Scaffold(
           body: SafeArea(
             child: Row(
@@ -310,13 +322,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               ),
                               children: [
                                 for (var i = 0; i < _destinations.length; i++)
-                                  if (i != 10 ||
-                                      canManageUsers(
-                                        context
-                                            .read<ConnectionBloc>()
-                                            .state
-                                            .connection,
-                                      ))
+                                  if (_canSelect(i))
                                     Padding(
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 4,
@@ -344,7 +350,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           const Padding(
                             padding: EdgeInsets.all(24),
                             child: Text(
-                              'Không gian sáng tạo của bạn\nĐược kết nối qua muse2api',
+                              'Không gian sáng tạo của bạn',
                               style: TextStyle(
                                 color: StudioColors.muted,
                                 height: 1.7,
@@ -359,7 +365,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 if (wide) const VerticalDivider(width: 1),
                 Expanded(
                   child: IndexedStack(
-                    index: _selected,
+                    index: selected,
                     children: [
                       ChatPage(
                         onConfigure: () => _select(6),
@@ -394,8 +400,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           context.read<ConnectionBloc>().state.connection,
                         ),
                       ),
-                      ConnectionPage(savedAddress: widget.savedAddress),
-                      const ServerStatusPage(),
+                      if (_selected == 6 && _canSelect(6))
+                        ConnectionPage(savedAddress: widget.savedAddress)
+                      else
+                        const SizedBox.shrink(),
+                      if (_selected == 7 && _canSelect(7))
+                        const ServerStatusPage()
+                      else
+                        const SizedBox.shrink(),
                       ImagePromptPage(
                         onCreateImage: _createImage,
                         onCreateVideo: _createVideo,
@@ -404,7 +416,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         onCreateImage: _createImage,
                         onCreateVideo: _createVideo,
                       ),
-                      if (_selected == 10)
+                      if (_selected == 10 && _canSelect(10))
                         AdminUsersPage(
                           key: ValueKey(
                             context.read<ConnectionBloc>().state.connection,

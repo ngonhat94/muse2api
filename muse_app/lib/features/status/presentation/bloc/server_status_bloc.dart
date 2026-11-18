@@ -1,5 +1,7 @@
 import 'package:bloc/bloc.dart';
 
+import '../../../connection/domain/entities/connection_permissions.dart';
+
 import '../../../connection/domain/entities/server_connection.dart';
 import '../../domain/entities/server_status.dart';
 import '../../domain/usecases/load_server_status.dart';
@@ -28,8 +30,8 @@ class ServerStatusBloc extends Cubit<ServerStatusState> {
 
   void connectionChanged(ServerConnection? connection) {
     if (isClosed) return;
-    if (state.connection?.baseUrl == connection?.baseUrl &&
-        state.connection?.apiKey == connection?.apiKey) {
+    if (!canConfigureServer(connection)) connection = null;
+    if (identical(state.connection, connection)) {
       return;
     }
     _generation++;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../app/studio_theme.dart';
+import '../../../connection/domain/entities/connection_permissions.dart';
 import '../bloc/server_status_bloc.dart';
 
 class ServerStatusPage extends StatelessWidget {
@@ -12,6 +13,9 @@ class ServerStatusPage extends StatelessWidget {
     BuildContext context,
   ) => BlocBuilder<ServerStatusBloc, ServerStatusState>(
     builder: (context, state) {
+      if (!canConfigureServer(state.connection)) {
+        return const SizedBox.shrink();
+      }
       final snapshot = state.snapshot;
       final updatedAt = state.updatedAt?.toLocal();
       String count(int? value) => value?.toString() ?? 'Chưa rõ';

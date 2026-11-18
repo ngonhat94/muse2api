@@ -136,7 +136,7 @@ class _AccountPageState extends State<AccountPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xóa tài khoản?'),
-        content: const Text('Tài khoản sẽ bị xóa khỏi pool trên server.'),
+        content: const Text('Tài khoản sẽ bị xóa khỏi Muse Studio.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -181,7 +181,7 @@ class _AccountPageState extends State<AccountPage> {
           const Padding(
             padding: EdgeInsets.only(top: 4, bottom: 20),
             child: Text(
-              'Quản lý pool tài khoản, phiên và quota lưu đệm.',
+              'Quản lý tài khoản Muse, phiên và quota lưu đệm.',
               style: TextStyle(color: StudioColors.muted),
             ),
           ),
@@ -285,7 +285,7 @@ class _AccountPageState extends State<AccountPage> {
             if (state.items.isEmpty && !state.busy)
               const Padding(
                 padding: EdgeInsets.all(24),
-                child: Text('Chưa có tài khoản trong pool.'),
+                child: Text('Chưa có tài khoản Muse.'),
               ),
             for (final account in state.items)
               Padding(
