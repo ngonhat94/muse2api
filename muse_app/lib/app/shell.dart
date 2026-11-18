@@ -148,6 +148,47 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     context.read<VideoBloc>().add(VideoResumed(connection, id));
   }
 
+  bool _confirmingLogout = false;
+  Future<void> _logout() async {
+    final bloc = context.read<ConnectionBloc>();
+    final connection = bloc.state.connection;
+    if (_confirmingLogout || connection == null || connection.isLocal) return;
+    _confirmingLogout = true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Đăng xuất khỏi Muse Studio?'),
+        content: const Text(
+          'API key đã lưu trên thiết bị này sẽ bị xóa. Nội dung chưa lưu sẽ mất. '
+          'Tác vụ đang chạy trên server vẫn tiếp tục; đăng xuất không thu hồi API key.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Ở lại'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Đăng xuất'),
+          ),
+        ],
+      ),
+    );
+    _confirmingLogout = false;
+    if (!mounted ||
+        confirmed != true ||
+        !identical(bloc.state.connection, connection)) {
+      return;
+    }
+    bloc.add(LogoutRequested());
+  }
+
+  Widget _logoutButton() => ListTile(
+    leading: const Icon(Icons.logout_rounded),
+    title: const Text('Đăng xuất'),
+    onTap: _logout,
+  );
+
   void _more() => showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
@@ -155,6 +196,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (context.read<ConnectionBloc>().state.connection
+                case final connection? when !connection.isLocal) ...[
+              ListTile(
+                leading: const Icon(Icons.logout_rounded),
+                title: const Text('Đăng xuất'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _logout();
+                },
+              ),
+              const Divider(),
+            ],
             for (var i = 3; i < _destinations.length; i++)
               if (i != 10 ||
                   canManageUsers(
@@ -285,6 +338,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               ],
                             ),
                           ),
+                          if (context.read<ConnectionBloc>().state.connection
+                              case final connection? when !connection.isLocal)
+                            _logoutButton(),
                           const Padding(
                             padding: EdgeInsets.all(24),
                             child: Text(

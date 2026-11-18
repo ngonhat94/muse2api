@@ -31,7 +31,10 @@ class _KeyLoginPageState extends State<KeyLoginPage> {
   Widget build(BuildContext context) =>
       BlocBuilder<ConnectionBloc, ServerConnectionState>(
         builder: (context, state) {
-          final busy = state.status == ConnectionStatus.connecting;
+          final busy =
+              state.status == ConnectionStatus.connecting ||
+              state.loggingOut ||
+              state.credentialRemovalFailed;
           return Scaffold(
             body: SafeArea(
               child: Center(
@@ -75,10 +78,19 @@ class _KeyLoginPageState extends State<KeyLoginPage> {
                                 ),
                               ),
                             ],
+                            if (state.credentialRemovalFailed)
+                              TextButton(
+                                onPressed: () => context
+                                    .read<ConnectionBloc>()
+                                    .add(LogoutRequested()),
+                                child: const Text('Thử xóa API key lại'),
+                              ),
                             const SizedBox(height: 24),
                             FilledButton(
                               onPressed: busy ? null : () => _submit(busy),
-                              child: busy
+                              child: state.credentialRemovalFailed
+                                  ? const Text('Đăng nhập')
+                                  : busy
                                   ? const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -90,7 +102,7 @@ class _KeyLoginPageState extends State<KeyLoginPage> {
                                           ),
                                         ),
                                         SizedBox(width: 12),
-                                        Text('Đang kiểm tra…'),
+                                        Text('Vui lòng chờ…'),
                                       ],
                                     )
                                   : const Text('Đăng nhập'),
