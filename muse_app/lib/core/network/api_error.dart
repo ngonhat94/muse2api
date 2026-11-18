@@ -3,9 +3,14 @@ import 'dart:convert';
 import '../errors/app_failure.dart';
 
 AppFailure apiError(int status, String body) {
-  if (status == 401 || status == 403) {
+  if (status == 401) {
     return const AppFailure(
-      'API key không hợp lệ hoặc không có quyền truy cập.',
+      'API key không hợp lệ hoặc đã bị thu hồi. Kiểm tra và nhập lại key, hoặc liên hệ quản trị viên để cấp key mới.',
+    );
+  }
+  if (status == 403) {
+    return const AppFailure(
+      'API key không có quyền thực hiện yêu cầu này. Liên hệ quản trị viên để kiểm tra quyền truy cập.',
     );
   }
   if (status == 409) {

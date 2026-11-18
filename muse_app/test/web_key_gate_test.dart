@@ -82,7 +82,9 @@ void main() {
           );
           await tester.pump();
           expect(
-            find.text('API key không hợp lệ hoặc không có quyền truy cập.'),
+            find.text(
+              'API key không hợp lệ hoặc đã bị thu hồi. Kiểm tra và nhập lại key, hoặc liên hệ quản trị viên để cấp key mới.',
+            ),
             findsOneWidget,
           );
           expect(find.textContaining('do not display'), findsNothing);
@@ -221,7 +223,9 @@ void main() {
       expect(find.byType(AppShell), success ? findsOneWidget : findsNothing);
       if (status == 401) {
         expect(
-          find.text('API key không hợp lệ hoặc không có quyền truy cập.'),
+          find.text(
+            'API key không hợp lệ hoặc đã bị thu hồi. Kiểm tra và nhập lại key, hoặc liên hệ quản trị viên để cấp key mới.',
+          ),
           findsOneWidget,
         );
       }
