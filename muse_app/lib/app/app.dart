@@ -55,6 +55,7 @@ class MuseApp extends StatelessWidget {
                 create: (_) => ConnectionBloc(
                   dependencies.connectServer,
                   restore: dependencies.restoreConnection,
+                  clientConfig: dependencies.clientConfig,
                   forget: dependencies.forgetConnection,
                   desktop: dependencies.desktopEngine,
                   readLocalPreference: dependencies.readLocalPreference,

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../../domain/repositories/client_config_repository.dart';
+
 import 'package:bloc/bloc.dart';
 
 import '../../../../core/errors/app_failure.dart';
@@ -66,6 +68,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
   ConnectionBloc(
     this.connect, {
     this.restore,
+    this.clientConfig,
     this.forget,
     this.desktop,
     this.readLocalPreference,
@@ -96,6 +99,15 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       if (state.status != ConnectionStatus.disconnected) return;
       final attempt = ++_attempt;
       try {
+        loadingConfig = clientConfig != null;
+        if (loadingConfig)
+          emit(
+            const ServerConnectionState(status: ConnectionStatus.connecting),
+          );
+        final address = await clientConfig?.load() ?? defaultServerUrl;
+        if (emit.isDone || attempt != _attempt) return;
+        sharedAddress = address;
+        loadingConfig = false;
         final local = await readLocalPreference?.call();
         ServerConnection? saved;
         try {
@@ -110,7 +122,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
         if (desktop?.supported == true &&
             (local == true || (local == null && saved == null))) {
           add(LocalConnectionRequested());
-        } else if (saved != null) {
+        } else if (saved != null &&
+            (clientConfig == null || saved.baseUrl == sharedAddress)) {
           add(ConnectionRequested(saved.baseUrl, saved.apiKey));
         }
       } catch (error) {
@@ -281,6 +294,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
         return;
       }
       ++_attempt;
+      loadingConfig = false;
       final local = state.localMode;
       emit(
         ServerConnectionState(
@@ -325,6 +339,9 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
   }
   final ConnectServer connect;
   final RestoreConnection? restore;
+  final ClientConfigRepository? clientConfig;
+  String sharedAddress = defaultServerUrl;
+  bool loadingConfig = false;
   final ForgetConnection? forget;
   final DesktopEngine? desktop;
   final Future<bool?> Function()? readLocalPreference;
