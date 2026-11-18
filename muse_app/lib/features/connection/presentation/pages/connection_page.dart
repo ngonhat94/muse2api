@@ -240,9 +240,14 @@ class _ConnectionPageState extends State<ConnectionPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Kết nối Muse của bạn',
-                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700),
+                Text(
+                  state.connection?.isLocal == true
+                      ? 'Engine trên máy'
+                      : 'Thiết lập Muse Studio',
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -261,7 +266,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                   ),
                   const SizedBox(height: 20),
                 ],
-                if (localAvailable)
+                if (localAvailable && state.connection?.isLocal != true)
                   ExpansionTile(
                     key: ValueKey(connected),
                     initiallyExpanded: connected,
@@ -272,7 +277,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     ),
                     children: [remotePanel],
                   )
-                else
+                else if (!state.localMode)
                   remotePanel,
               ],
             ),

@@ -101,7 +101,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Kết nối Muse của bạn'), findsOneWidget);
+      expect(find.text('Thiết lập Muse Studio'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // Desktop offers the local engine first; remote setup is collapsed.
       final remoteSetup = find.widgetWithText(

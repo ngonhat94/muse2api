@@ -19,6 +19,7 @@ import '../features/chat/presentation/bloc/chat_bloc.dart';
 import '../features/chat/presentation/pages/chat_page.dart';
 import '../features/connection/presentation/bloc/connection_bloc.dart';
 import '../features/connection/presentation/pages/connection_page.dart';
+import '../features/connection/presentation/pages/server_settings_page.dart';
 import '../features/images/presentation/bloc/image_bloc.dart';
 import '../features/images/presentation/pages/image_page.dart';
 import '../features/videos/presentation/bloc/video_bloc.dart';
@@ -77,7 +78,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  int _selected = 6;
+  int _selected = 11;
   final _imagePrompt = TextEditingController();
   final _videoPrompt = TextEditingController();
   static const _destinations = [
@@ -87,19 +88,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     (Icons.checklist_rounded, 'Tác vụ'),
     (Icons.photo_library_outlined, 'Thư viện'),
     (Icons.people_outline, 'Tài khoản'),
-    (Icons.dns_outlined, 'Kết nối Muse'),
+    (Icons.settings_outlined, 'Cài đặt server'),
     (Icons.monitor_heart_outlined, 'Trạng thái server'),
     (Icons.image_search_outlined, 'Ảnh thành prompt'),
     (Icons.auto_fix_high_outlined, 'Văn bản thành prompt'),
     (Icons.admin_panel_settings_outlined, 'Người dùng & API key'),
+    (Icons.computer_outlined, 'Engine trên máy'),
   ];
   bool _canSelect(int index) {
     final bloc = context.read<ConnectionBloc>();
-    if (index == 6) {
-      return canShowConnectionTools(
-        bloc.state.connection,
-        supportsLocal: bloc.supportsLocal,
-      );
+    if (index == 6) return canConfigureServer(bloc.state.connection);
+    if (index == 11) {
+      return bloc.state.connection == null ||
+          (bloc.supportsLocal && bloc.state.connection?.isLocal == true);
     }
     if (index == 7) return canConfigureServer(bloc.state.connection);
     if (index == 10) return canManageUsers(bloc.state.connection);
@@ -120,6 +121,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
     if (index == 4) context.read<MediaBloc>().add(CollectionLoaded(connection));
     if (index == 5) context.read<AccountBloc>().add(AccountsLoaded(connection));
+  }
+
+  void _configure() {
+    // Setup belongs to the disconnected boundary, never server settings.
+    // Connected local sessions may still manage their native engine.
+    if (_canSelect(11)) _select(11);
   }
 
   void _createImage(String prompt) => _handoff(prompt, false);
@@ -254,7 +261,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       context.read<AccountBloc>().add(AccountsCleared());
       setState(
         () => _selected = state.connection == null
-            ? 6
+            ? 11
             : state.connection!.isLocal
             ? 5
             : 0,
@@ -266,6 +273,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     child: LayoutBuilder(
       builder: (context, constraints) {
         context.watch<ConnectionBloc>();
+        // Web disconnects replace the shell with MuseApp's key-only gate.
+        // Native clients retain offline tools and their separate engine setup.
         final wide = constraints.maxWidth >= 800;
         final selected = _canSelect(_selected) ? _selected : 0;
         return Scaffold(
@@ -368,7 +377,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     index: selected,
                     children: [
                       ChatPage(
-                        onConfigure: () => _select(6),
+                        onConfigure: _configure,
                         onCreateImage: _createImage,
                       ),
                       ImagePage(
@@ -376,13 +385,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           context.read<ConnectionBloc>().state.connection,
                         ),
                         promptController: _imagePrompt,
-                        onConfigure: () => _select(6),
+                        onConfigure: _configure,
                       ),
                       VideoPage(
                         key: ValueKey(
                           context.read<ConnectionBloc>().state.connection,
                         ),
-                        onConfigure: () => _select(6),
+                        onConfigure: _configure,
                         onTasks: () => _select(3),
                         promptController: _videoPrompt,
                       ),
@@ -401,7 +410,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         ),
                       ),
                       if (_selected == 6 && _canSelect(6))
-                        ConnectionPage(savedAddress: widget.savedAddress)
+                        const ServerSettingsPage()
                       else
                         const SizedBox.shrink(),
                       if (_selected == 7 && _canSelect(7))
@@ -429,6 +438,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               .state
                               .connection,
                         )
+                      else
+                        const SizedBox.shrink(),
+                      if (_selected == 11 && _canSelect(11))
+                        ConnectionPage(savedAddress: widget.savedAddress)
                       else
                         const SizedBox.shrink(),
                     ],
