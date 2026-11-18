@@ -5,13 +5,62 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import httpx
+import json
 import app
+
+
+class Response:
+    def __init__(self, messages):
+        start = next(m for m in messages if m['type'] == 'http.response.start')
+        self.status_code = start['status']
+        self.headers = {k.decode().lower(): v.decode() for k, v in start['headers']}
+        self.body = b''.join(m.get('body', b'') for m in messages)
+
+    def json(self):
+        return json.loads(self.body)
+
+
+class Client:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+    async def request(self, method, path, headers):
+        scope = {
+            'type': 'http', 'asgi': {'version': '3.0'}, 'http_version': '1.1',
+            'method': method, 'scheme': 'http', 'path': path,
+            'raw_path': path.encode(), 'query_string': b'', 'root_path': '',
+            'headers': [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+            'server': ('fixture', 80), 'client': ('fixture', 1),
+        }
+        messages = []
+        received = False
+
+        async def receive():
+            nonlocal received
+            if not received:
+                received = True
+                return {'type': 'http.request', 'body': b'', 'more_body': False}
+            await asyncio.Event().wait()
+
+        async def send(message):
+            messages.append(message)
+
+        await app.app(scope, receive, send)
+        return Response(messages)
+
+    async def get(self, path, headers):
+        return await self.request('GET', path, headers)
+
+    async def options(self, path, headers):
+        return await self.request('OPTIONS', path, headers)
 
 
 async def main():
     origin = 'https://ngonhat94.github.io'
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app.app), base_url='http://fixture') as client:
+    async with Client() as client:
         preflight = await client.options('/v1/models', headers={
             'Origin': origin, 'Access-Control-Request-Method': 'GET',
             'Access-Control-Request-Headers': 'authorization',
