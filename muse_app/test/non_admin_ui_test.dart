@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:muse_app/features/accounts/domain/repositories/extension_download.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -30,6 +33,17 @@ Future<void> frames(WidgetTester tester) async {
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 350));
+}
+
+class FixtureZipSaver implements ExtensionZipSaver {
+  int saves = 0;
+  @override
+  bool get supported => true;
+  @override
+  void save(Uint8List bytes) {
+    expect(bytes, [80, 75, 3, 4]);
+    saves++;
+  }
 }
 
 void main() {
@@ -109,11 +123,22 @@ void main() {
         SharedPreferences.setMockInitialValues({});
         final prefs = (await tester.runAsync(SharedPreferences.getInstance))!;
         final calls = <String>[];
+        final saver = FixtureZipSaver();
         final dependencies = AppDependencies(
           prefs,
+          zipSaver: saver,
           credentialStore: MemoryCredentialStore(),
           clientFactory: () => MockClient((r) async {
             calls.add(r.url.path);
+            if (r.url.path == '/admin/extension') {
+              expect(r.headers['Authorization'], 'Bearer synthetic-valid');
+              expect(r.url.hasQuery, false);
+              return http.Response.bytes(
+                [80, 75, 3, 4],
+                200,
+                headers: {'content-type': 'application/zip'},
+              );
+            }
             if (r.url.path == '/public/client-config') {
               return http.Response(
                 jsonEncode({'server_url': defaultServerUrl}),
@@ -250,10 +275,20 @@ void main() {
         await tester.tap(find.text('Get Cookies'));
         await frames(tester);
         expect(find.text('Nhập phiên Muse an toàn'), findsOneWidget);
-        expect(find.text('1. Lấy extension 1.1.0'), findsOneWidget);
+        expect(find.text('1. Tải ZIP và giải nén'), findsOneWidget);
         expect(find.text(defaultServerUrl, skipOffstage: false), findsNothing);
         expect(find.text('Cookie string'), findsNothing);
         expect(calls.length, callsBeforeGuide);
+        await tester.ensureVisible(find.text('Tải extension ZIP'));
+        await tester.pump();
+        await tester.tap(find.text('Tải extension ZIP'));
+        await frames(tester);
+        expect(calls.where((path) => path == '/admin/extension'), hasLength(1));
+        expect(saver.saves, 0);
+        await tester.ensureVisible(find.text('Lưu muse2api-extension.zip'));
+        await tester.tap(find.text('Lưu muse2api-extension.zip'));
+        await tester.pump();
+        expect(saver.saves, 1);
         if (width < 800) {
           await tester.tap(find.text('Thêm'));
           await frames(tester);
@@ -275,7 +310,10 @@ void main() {
           400,
           scrollable: accountScroll,
         );
-        expect(find.text('Nếu chưa nhập được'), findsOneWidget);
+        expect(
+          find.text('Bảo vệ phiên đăng nhập & xử lý sự cố'),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
         await tester.ensureVisible(find.text('Mở form nhập thủ công'));
         await tester.pump();

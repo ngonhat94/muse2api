@@ -1,126 +1,171 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-/// Help only: opening this tab never reads cookies or starts an import.
+/// Passive help; downloads and imports require explicit user actions.
 class GetCookiesGuide extends StatelessWidget {
-  const GetCookiesGuide({super.key, required this.onManualImport});
-
+  const GetCookiesGuide({
+    super.key,
+    required this.onManualImport,
+    this.download,
+  });
   final VoidCallback? onManualImport;
-  static final sourceUri = Uri.parse(
-    'https://github.com/ngonhat94/murouter/tree/main/extension',
-  );
-
-  Future<void> _openSource(BuildContext context) async {
-    try {
-      if (await launchUrl(sourceUri, mode: LaunchMode.externalApplication)) {
-        return;
-      }
-    } catch (_) {
-      // Show a fixed message, never a raw platform error.
-    }
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Không mở được nguồn extension. Hãy nhờ quản trị viên gửi bản 1.1.0.',
-          ),
-        ),
-      );
-    }
-  }
+  final Widget? download;
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.topLeft,
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 760),
+      constraints: const BoxConstraints(maxWidth: 960),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const _Panel(
+            title: 'Cập nhật thủ công · Extension 1.1.0',
+            icon: Icons.system_update_alt,
+            highlighted: true,
+            children: [
+              Text(
+                'Đã cài bản cũ? Tải ZIP mới, thay các tệp trong thư mục cũ → Reload tại chrome://extensions → tải lại Muse Studio.',
+              ),
+            ],
+          ),
           Text(
             'Nhập phiên Muse an toàn',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           const Text(
-            'Dùng Chrome hoặc Edge trên máy tính. Bạn cần tài khoản Muse của mình đã đăng nhập; hướng dẫn này không tự đăng ký tài khoản Muse.',
-          ),
-          const SizedBox(height: 24),
-          const _GuideStep(
-            title: '1. Lấy extension 1.1.0',
-            body: 'Nhờ quản trị viên gửi muse2api-extension.zip bản 1.1.0 từ chức năng tải extension của hệ thống. Giải nén vào thư mục cố định. Nếu có quyền truy cập kho mã riêng, bạn cũng có thể lấy thư mục extension/ từ nguồn bên dưới. Không dùng bản 1.0.2 hoặc gói không rõ nguồn.',
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _openSource(context),
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Nguồn extension (cần quyền GitHub)'),
+            'Vì sao cần extension? Cookie phiên Muse có HttpOnly: JavaScript trên trang web không đọc được. Extension dùng quyền cookie của trình duyệt để đọc phiên của chính bạn sau khi bạn cho phép.',
           ),
           const SizedBox(height: 16),
-          const _GuideStep(
+          const _Panel(
+            title: 'Khuyên dùng: Extension trình duyệt',
+            icon: Icons.verified_user_outlined,
+            highlighted: true,
+            children: [
+              Text(
+                'Chrome / Edge trên máy tính · Không cần Python hay dòng lệnh. Không cần dán API key hoặc cookie vào extension khi dùng nhập tự động. Mở Get Cookies không tự đọc cookie hoặc nhập tài khoản.',
+              ),
+            ],
+          ),
+          _Panel(
+            title: '1. Tải ZIP và giải nén',
+            icon: Icons.download_outlined,
+            children: [
+              const Text(
+                'Tải muse2api-extension.zip từ máy chủ đang kết nối bằng phiên Muse Studio hiện tại. Sau khi ZIP sẵn sàng, bấm Lưu rồi giải nén vào một thư mục cố định.',
+              ),
+              const SizedBox(height: 12),
+              ?download,
+            ],
+          ),
+          const _Panel(
             title: '2. Cài vào Chrome / Edge',
-            body: 'Dán chrome://extensions hoặc edge://extensions vào thanh địa chỉ. Bật Developer mode (Chế độ nhà phát triển) → Load unpacked (Tải tiện ích đã giải nén) → chọn thư mục chứa manifest.json, thường là muse2api-extension. Khi cập nhật, thay các tệp trong thư mục cũ rồi bấm Reload (Tải lại) tại extension. Tải lại cả trang Muse Studio.',
+            icon: Icons.extension_outlined,
+            children: [
+              Text(
+                'Dán chrome://extensions (hoặc edge://extensions) vào thanh địa chỉ. Bật Developer mode (Chế độ nhà phát triển) → Load unpacked (Tải tiện ích đã giải nén) → chọn thư mục muse2api-extension chứa manifest.json. Khi cập nhật, bấm Reload rồi tải lại Muse Studio.',
+              ),
+              SizedBox(height: 8),
+              SelectableText('chrome://extensions'),
+            ],
           ),
-          const _GuideStep(
-            title: '3. Đăng nhập Muse',
-            body: 'Mở https://muse.ai và đăng nhập tài khoản của bạn trong cùng hồ sơ trình duyệt (browser profile) đã cài extension và mở Muse Studio. Không dùng cửa sổ ẩn danh hoặc hồ sơ khác.',
+          const _Panel(
+            title: '3. Đăng nhập Muse → đọc và nhập phiên',
+            icon: Icons.login,
+            children: [
+              SelectableText('https://muse.ai'),
+              SizedBox(height: 8),
+              Text(
+                'Đăng nhập tài khoản Muse của bạn trong cùng hồ sơ Chrome/Edge đã cài extension và mở Muse Studio, không dùng ẩn danh. Quay lại Danh sách → “Nhập tài khoản từ trình duyệt”. Extension 1.1.0 mở cửa sổ xác nhận: kiểm tra trang yêu cầu và nơi nhận, rồi chọn “Cho phép nhập một lần” trong 90 giây. Nếu không nhận ra địa chỉ, hãy hủy.',
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Sau khi nhập thành công, danh sách tự tải lại; tài khoản thuộc người dùng Muse Studio hiện tại. Nhập không bảo đảm phiên còn hợp lệ hoặc tự cập nhật quota. Nếu kết quả chưa rõ, tải lại danh sách trước khi thử lại để tránh nhập trùng.',
+              ),
+            ],
           ),
-          const _GuideStep(
-            title: '4. Nhập và xác nhận một lần',
-            body: 'Quay lại tab Danh sách → bấm “Nhập tài khoản từ trình duyệt”. Cửa sổ riêng của extension sẽ yêu cầu bạn kiểm tra địa chỉ trang yêu cầu và nơi nhận trước khi chọn “Cho phép nhập một lần” trong 90 giây. Chỉ duyệt khi nhận ra cả hai địa chỉ; nếu không chắc hãy hủy. Mở Get Cookies không tự nhập hay đọc cookie.',
+          const _Panel(
+            title: 'Bảo vệ phiên đăng nhập & xử lý sự cố',
+            icon: Icons.lock_outline,
+            children: [
+              Text(
+                'Cookie tương đương quyền truy cập tài khoản: không gửi vào chat, ảnh chụp hoặc gói hỗ trợ. Luồng tự động gửi cookie trực tiếp từ extension đến máy chủ sau khi bạn duyệt, không trả cookie về trang web.\n\nKhông thấy extension? Kiểm tra bản 1.1.0, bật extension và tải lại trang trong cùng browser profile. Cầu nối hiện chỉ hỗ trợ https://muapp-3d6.pages.dev; domain riêng và preview không tự được tin cậy. Không tắt bảo vệ để cấp quyền cho trang lạ.\n\nKhông có phiên Muse? Đăng nhập lại muse.ai. Đã hủy/hết hạn? Chỉ nhập lại khi sẵn sàng xác nhận. Điện thoại, Safari, Firefox và ứng dụng native không có cầu nối này.',
+              ),
+            ],
           ),
-          const _GuideStep(
-            title: '5. Kiểm tra danh sách',
-            body: 'Khi thành công, danh sách tài khoản tự tải lại. Tài khoản nhập vào gắn với người dùng đang đăng nhập Muse Studio. Việc nhập không bảo đảm phiên còn hợp lệ và không tự cập nhật quota. Nếu mất kết nối hoặc hết thời gian chờ, tải lại danh sách trước khi thử lại để tránh nhập trùng.',
+          _Panel(
+            title: 'Tùy chọn: nhập thủ công',
+            icon: Icons.edit_outlined,
+            children: [
+              const Text(
+                'Nếu không dùng được nhập tự động, lấy cookie của chính bạn bằng extension trên máy tính tin cậy rồi dán vào trường Cookie string trong form. Kiểm tra nơi lưu và xóa clipboard sau khi dùng. Đây là tùy chọn riêng, không phải bước bắt buộc của luồng tự động.',
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onManualImport,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Mở form nhập thủ công'),
+              ),
+            ],
           ),
-          const Divider(height: 32),
-          Text(
-            'Bảo vệ phiên đăng nhập',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Extension cần quyền cookie của Muse để nhập phiên và gửi trực tiếp tới hệ thống sau khi bạn duyệt; cookie không trả về trang Muse Studio qua cầu nối. Không cần dán cookie hoặc API key vào extension cho luồng này. Cookie tương đương quyền truy cập tài khoản: không gửi vào chat công khai, ảnh chụp màn hình hoặc gói hỗ trợ.',
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Nếu chưa nhập được',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '• Không thấy nút nhập / không tìm thấy extension: kiểm tra Chrome/Edge desktop, bản 1.1.0, bật extension và tải lại trang. Cài riêng cho từng browser profile.\n\n• Trang web chưa được hỗ trợ: cầu nối hiện chỉ hỗ trợ https://muapp-3d6.pages.dev. Domain riêng và đường dẫn preview không tự được tin cậy; nhờ quản trị viên hỗ trợ, không tắt bảo vệ hay tự cấp quyền cho trang lạ.\n\n• Không có phiên Muse: đăng nhập lại muse.ai trong cùng hồ sơ rồi nhập lại.\n\n• Đã hủy / hết hạn duyệt: chỉ bấm nhập lại khi sẵn sàng xác nhận. Nếu báo kết quả chưa rõ, làm mới danh sách trước.\n\n• Điện thoại, Safari, Firefox hoặc ứng dụng desktop native: không có cầu nối này. Có thể lấy cookie của chính bạn qua extension trên máy tính rồi dùng form nhập thủ công bên dưới trên thiết bị tin cậy. Chỉ dán vào trường Cookie string, kiểm tra nơi lưu và xóa nội dung clipboard sau khi dùng.',
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: onManualImport,
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('Mở form nhập thủ công'),
-          ),
-          const SizedBox(height: 24),
         ],
       ),
     ),
   );
 }
 
-class _GuideStep extends StatelessWidget {
-  const _GuideStep({required this.title, required this.body});
+class _Panel extends StatelessWidget {
+  const _Panel({
+    required this.title,
+    required this.icon,
+    required this.children,
+    this.highlighted = false,
+  });
   final String title;
-  final String body;
-
+  final IconData icon;
+  final List<Widget> children;
+  final bool highlighted;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(
-          header: true,
-          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? colors.primaryContainer.withValues(alpha: .25)
+            : colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlighted
+              ? colors.primary.withValues(alpha: .5)
+              : colors.outlineVariant,
         ),
-        const SizedBox(height: 8),
-        Text(body),
-      ],
-    ),
-  );
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
 }

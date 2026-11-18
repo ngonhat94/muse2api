@@ -38,6 +38,7 @@ CASES = tuple((name, args) for name, args in (
     ('test_desktop_launcher.py', ()),
     ('test_extension_upgrade_notice.py', ()),
     ('test_extension_zip.py', ()),
+    ('test_extension_download.py', ()),
     ('test_generation_idempotency.py', ()),
     ('test_idempotency_acceptance.py', ()),
     ('test_keepalive_scheduling.py', ()),
