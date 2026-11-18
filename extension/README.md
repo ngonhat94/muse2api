@@ -1,3 +1,8 @@
+Muse Studio Web 1.1.0: xem https://github.com/ngonhat94/murouter/blob/main/docs/BROWSER_ACCOUNT_IMPORT.md.
+Chrome/Edge desktop: cài Load unpacked một lần, reload sau cập nhật;
+trong Muse Studio chọn Nhập tài khoản từ trình duyệt, xác nhận origin/backend
+trong cửa sổ extension từng lần. Không hỗ trợ mobile. API key không lưu trong extension.
+
 Muse2API Cookie 导入扩展 —— 安装说明
 =====================================
 
@@ -12,7 +17,7 @@ Muse2API Cookie 导入扩展 —— 安装说明
     Windows : D:\muse2api-extension
     macOS   : ~/Documents/muse2api-extension
 
-解压后应该能看到 manifest.json、popup.html、popup.js 三个文件。
+解压后保留所有文件，包括 manifest.json、popup.html、popup.js、background.js、import_policy.js、approval.html 和 approval.js。
 
 
 二、在 Chrome / Edge 里加载
@@ -38,7 +43,7 @@ Edge：
 1. 先在这个浏览器里打开 https://muse.ai/ 并登录，
    登录到能看到聊天界面为止。
 2. 到 muse2api 管理页「账号池」页顶部，复制 BASE URL 和 API Key。
-3. 点浏览器工具栏上的扩展图标，把这两项填进去（只需要填一次，会记住）。
+3. 点浏览器工具栏上的扩展图标，把这两项填进去（服务地址会记住；API Key 不保存，每次手动填写）。
 4. 点「读取并导入」。看到「✓ 导入成功」就完成了。
 
 
@@ -58,7 +63,7 @@ A: 检查服务地址是不是 https，以及服务本身能不能打开
    （浏览器直接访问 服务地址/admin 试试）。
 
 Q: 会不会把我的 Cookie 传到别的地方？
-A: 不会。扩展只有 cookies 和 storage 两个权限，代码就在 popup.js 里，
+A: 不会。扩展有 cookies、storage、activeTab 和明确列出的 host 权限；手动导入按目标请求可选 host 权限。代码在 popup.js、background.js 和 import_policy.js 里，
    你可以自己看：它只往你填的那个服务地址发一个 POST，没有别的请求。
 
 

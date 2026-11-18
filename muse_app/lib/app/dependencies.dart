@@ -1,3 +1,5 @@
+import '../features/accounts/data/browser_import_factory.dart';
+import '../features/accounts/domain/repositories/browser_account_import.dart';
 import '../features/connection/data/repositories/client_config_repository_impl.dart';
 import '../features/connection/domain/repositories/client_config_repository.dart';
 import '../features/admin/data/repositories/admin_users_repository_impl.dart';
@@ -109,6 +111,7 @@ class AppDependencies {
   final pickReferenceImages = const PickReferenceImages(
     DeviceReferenceFileSource(),
   );
+  final BrowserAccountImport browserImport = createBrowserAccountImport();
   late final ClientConfigRepository clientConfig;
   late final PendingGenerationStore pendingGenerations;
   late final AdminUsersRepository adminUsers;

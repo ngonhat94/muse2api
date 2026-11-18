@@ -1,3 +1,5 @@
+import '../../../../app/dependencies.dart';
+import 'browser_import_button.dart';
 import '../../../../app/studio_theme.dart';
 import 'cookie_import_form.dart';
 import 'keepalive_status_section.dart';
@@ -217,6 +219,14 @@ class _AccountPageState extends State<AccountPage> {
               child: Text('Kết nối server để quản lý tài khoản.'),
             )
           else ...[
+            if (context.read<AppDependencies?>()?.browserImport
+                case final bridge? when bridge.supported)
+              BrowserImportButton(
+                key: ObjectKey(connection),
+                bridge: bridge,
+                connection: connection,
+                disabled: state.busy,
+              ),
             if (context.read<AccountBloc>().manage.repository
                 is BatchKeepaliveRepository)
               Align(
