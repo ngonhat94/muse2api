@@ -1,4 +1,6 @@
 import 'studio_theme.dart';
+import 'dependencies.dart';
+import '../features/admin/domain/repositories/admin_users_repository.dart';
 import '../core/presentation/generation_recovery_cubit.dart';
 import '../core/presentation/generation_recovery_panel.dart';
 import '../features/text_prompt/presentation/text_prompt_page.dart';
@@ -25,6 +27,7 @@ import '../features/tasks/presentation/pages/task_page.dart';
 import '../features/media/presentation/bloc/media_bloc.dart';
 import '../features/media/domain/repositories/storage_repository.dart';
 import '../features/media/presentation/pages/media_page.dart';
+import '../features/admin/presentation/pages/admin_users_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, this.savedAddress, this.storageRepository});
@@ -71,8 +74,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     (Icons.monitor_heart_outlined, 'Trạng thái server'),
     (Icons.image_search_outlined, 'Ảnh thành prompt'),
     (Icons.auto_fix_high_outlined, 'Văn bản thành prompt'),
+    (Icons.admin_panel_settings_outlined, 'Người dùng & API key'),
   ];
   void _select(int index) {
+    if (index == 10 &&
+        !canManageUsers(context.read<ConnectionBloc>().state.connection)) {
+      return;
+    }
     context.read<TaskBloc>().add(CollectionPaused());
     setState(() => _selected = index);
     final connection = context.read<ConnectionBloc>().state.connection;
@@ -132,15 +140,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 3; i < _destinations.length; i++)
-              ListTile(
-                leading: Icon(_destinations[i].$1),
-                title: Text(_destinations[i].$2),
-                selected: _selected == i,
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _select(i);
-                },
-              ),
+              if (i != 10 ||
+                  canManageUsers(
+                    context.read<ConnectionBloc>().state.connection,
+                  ))
+                ListTile(
+                  leading: Icon(_destinations[i].$1),
+                  title: Text(_destinations[i].$2),
+                  selected: _selected == i,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _select(i);
+                  },
+                ),
           ],
         ),
       ),
@@ -229,21 +241,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                               ),
                               children: [
                                 for (var i = 0; i < _destinations.length; i++)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 4,
-                                    ),
-                                    child: ListTile(
-                                      selected: _selected == i,
-                                      selectedTileColor: StudioColors.selected,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
+                                  if (i != 10 ||
+                                      canManageUsers(
+                                        context
+                                            .read<ConnectionBloc>()
+                                            .state
+                                            .connection,
+                                      ))
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4,
                                       ),
-                                      leading: Icon(_destinations[i].$1),
-                                      title: Text(_destinations[i].$2),
-                                      onTap: () => _select(i),
+                                      child: ListTile(
+                                        selected: _selected == i,
+                                        selectedTileColor:
+                                            StudioColors.selected,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        leading: Icon(_destinations[i].$1),
+                                        title: Text(_destinations[i].$2),
+                                        onTap: () => _select(i),
+                                      ),
                                     ),
-                                  ),
                               ],
                             ),
                           ),
@@ -310,6 +332,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         onCreateImage: _createImage,
                         onCreateVideo: _createVideo,
                       ),
+                      if (_selected == 10)
+                        AdminUsersPage(
+                          key: ValueKey(
+                            context.read<ConnectionBloc>().state.connection,
+                          ),
+                          repository: context
+                              .read<AppDependencies>()
+                              .adminUsers,
+                          connection: context
+                              .read<ConnectionBloc>()
+                              .state
+                              .connection,
+                        )
+                      else
+                        const SizedBox.shrink(),
                     ],
                   ),
                 ),

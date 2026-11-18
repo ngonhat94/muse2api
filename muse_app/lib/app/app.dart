@@ -24,74 +24,80 @@ class MuseApp extends StatelessWidget {
   const MuseApp({super.key, required this.dependencies});
   final AppDependencies dependencies;
   @override
-  Widget build(BuildContext context) => RepositoryProvider<SaveMedia>.value(
-    value: dependencies.saveMedia,
-    child: RepositoryProvider<PickReferenceImages>.value(
-      value: dependencies.pickReferenceImages,
-      child: RepositoryProvider<ManageProxy>.value(
-        value: dependencies.manageProxy,
-        child: MultiBlocProvider(
-          providers: [
-            BlocProvider(
-              create: (_) => GenerationRecoveryCubit(
-                dependencies.pendingGenerations,
-                dependencies.getImageTask,
-                dependencies.getVideoTask,
+  Widget build(
+    BuildContext context,
+  ) => RepositoryProvider<AppDependencies>.value(
+    value: dependencies,
+    child: RepositoryProvider<SaveMedia>.value(
+      value: dependencies.saveMedia,
+      child: RepositoryProvider<PickReferenceImages>.value(
+        value: dependencies.pickReferenceImages,
+        child: RepositoryProvider<ManageProxy>.value(
+          value: dependencies.manageProxy,
+          child: MultiBlocProvider(
+            providers: [
+              BlocProvider(
+                create: (_) => GenerationRecoveryCubit(
+                  dependencies.pendingGenerations,
+                  dependencies.getImageTask,
+                  dependencies.getVideoTask,
+                ),
               ),
-            ),
-            BlocProvider(
-              create: (_) => TextPromptCubit(dependencies.textPromptRepository),
-            ),
-            BlocProvider(
-              create: (_) =>
-                  ImagePromptCubit(dependencies.imagePromptRepository),
-            ),
-            BlocProvider(
-              create: (_) => ConnectionBloc(
-                dependencies.connectServer,
-                restore: dependencies.restoreConnection,
-                forget: dependencies.forgetConnection,
-                desktop: dependencies.desktopEngine,
-                readLocalPreference: dependencies.readLocalPreference,
-                saveLocalPreference: dependencies.saveLocalPreference,
-              )..add(ConnectionRestored()),
-            ),
-            BlocProvider(
-              create: (_) => ChatBloc(
-                dependencies.sendMessage,
-                history: dependencies.chatHistory,
+              BlocProvider(
+                create: (_) =>
+                    TextPromptCubit(dependencies.textPromptRepository),
               ),
-            ),
-            BlocProvider(
-              create: (_) => VideoBloc(
-                dependencies.generateVideo,
-                dependencies.getVideoTask,
-                pendingStore: dependencies.pendingGenerations,
+              BlocProvider(
+                create: (_) =>
+                    ImagePromptCubit(dependencies.imagePromptRepository),
               ),
-            ),
-            BlocProvider(
-              create: (_) => ServerStatusBloc(dependencies.loadServerStatus),
-            ),
-            BlocProvider(create: (_) => TaskBloc(dependencies.loadTasks)),
-            BlocProvider(create: (_) => MediaBloc(dependencies.loadMedia)),
-            BlocProvider(
-              create: (_) => AccountBloc(dependencies.manageAccounts),
-            ),
-            BlocProvider(
-              create: (_) => ImageBloc(
-                dependencies.generateImage,
-                dependencies.getImageTask,
-                pendingStore: dependencies.pendingGenerations,
+              BlocProvider(
+                create: (_) => ConnectionBloc(
+                  dependencies.connectServer,
+                  restore: dependencies.restoreConnection,
+                  forget: dependencies.forgetConnection,
+                  desktop: dependencies.desktopEngine,
+                  readLocalPreference: dependencies.readLocalPreference,
+                  saveLocalPreference: dependencies.saveLocalPreference,
+                )..add(ConnectionRestored()),
               ),
-            ),
-          ],
-          child: MaterialApp(
-            title: 'Muse Studio',
-            debugShowCheckedModeBanner: false,
-            theme: StudioTheme.dark,
-            home: AppShell(
-              storageRepository: dependencies.storageRepository,
-              savedAddress: dependencies.connectionRepository.savedAddress,
+              BlocProvider(
+                create: (_) => ChatBloc(
+                  dependencies.sendMessage,
+                  history: dependencies.chatHistory,
+                ),
+              ),
+              BlocProvider(
+                create: (_) => VideoBloc(
+                  dependencies.generateVideo,
+                  dependencies.getVideoTask,
+                  pendingStore: dependencies.pendingGenerations,
+                ),
+              ),
+              BlocProvider(
+                create: (_) => ServerStatusBloc(dependencies.loadServerStatus),
+              ),
+              BlocProvider(create: (_) => TaskBloc(dependencies.loadTasks)),
+              BlocProvider(create: (_) => MediaBloc(dependencies.loadMedia)),
+              BlocProvider(
+                create: (_) => AccountBloc(dependencies.manageAccounts),
+              ),
+              BlocProvider(
+                create: (_) => ImageBloc(
+                  dependencies.generateImage,
+                  dependencies.getImageTask,
+                  pendingStore: dependencies.pendingGenerations,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              title: 'Muse Studio',
+              debugShowCheckedModeBanner: false,
+              theme: StudioTheme.dark,
+              home: AppShell(
+                storageRepository: dependencies.storageRepository,
+                savedAddress: dependencies.connectionRepository.savedAddress,
+              ),
             ),
           ),
         ),
