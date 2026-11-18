@@ -15,6 +15,7 @@ import 'package:muse_app/features/connection/domain/repositories/client_config_r
 import 'package:muse_app/features/connection/presentation/bloc/connection_bloc.dart';
 import 'package:muse_app/features/connection/presentation/pages/key_login_page.dart';
 import 'package:muse_app/features/connection/presentation/pages/connection_page.dart';
+import 'package:muse_app/features/connection/presentation/pages/server_settings_page.dart';
 import 'package:muse_app/features/status/presentation/pages/server_status_page.dart';
 import 'package:muse_app/features/status/presentation/bloc/server_status_bloc.dart';
 import 'package:muse_app/features/status/domain/usecases/load_server_status.dart';
@@ -166,7 +167,7 @@ void main() {
         }
         final admin = role == 'admin';
         for (final label in [
-          'Kết nối Muse',
+          'Cài đặt server',
           'Trạng thái server',
           'Người dùng & API key',
         ]) {
@@ -185,6 +186,8 @@ void main() {
           expect(find.text(label), admin ? findsOneWidget : findsNothing);
         }
         expect(find.byType(ConnectionPage, skipOffstage: false), findsNothing);
+        expect(find.text('Kết nối Muse'), findsNothing);
+        expect(find.text('Engine trên máy'), findsNothing);
         expect(
           find.byType(ServerStatusPage, skipOffstage: false),
           findsNothing,
@@ -195,6 +198,35 @@ void main() {
           isEmpty,
         );
         expect(find.text('Đăng xuất'), findsOneWidget);
+        if (admin) {
+          if (width >= 800) {
+            await tester.scrollUntilVisible(
+              find.text('Cài đặt server'),
+              -180,
+              scrollable: find
+                  .descendant(
+                    of: find.byType(AppShell),
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
+            );
+          }
+          await tester.tap(find.text('Cài đặt server'));
+          await frames(tester);
+          expect(find.byType(ServerSettingsPage), findsOneWidget);
+          expect(
+            find.byType(ConnectionPage, skipOffstage: false),
+            findsNothing,
+          );
+          expect(find.text('Ngắt kết nối'), findsNothing);
+          expect(find.text('Đăng nhập server'), findsNothing);
+          expect(find.text('Quên API key đã lưu'), findsNothing);
+          expect(find.text('Địa chỉ server dùng chung'), findsOneWidget);
+          if (width < 800) {
+            await tester.tap(find.text('Thêm'));
+            await frames(tester);
+          }
+        }
         if (width < 800) {
           await tester.tap(find.text('Tài khoản'));
         } else {

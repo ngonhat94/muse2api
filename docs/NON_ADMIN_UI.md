@@ -1,6 +1,6 @@
 # Focused user interface
 
-Remote sessions show server connection/configuration and diagnostics only when the verified principal has role `admin` **and** `global_settings: true`. User/key management independently requires role `admin` and `manage_users: true`. Missing identities, unknown roles, and capabilities without the admin role do not enable technical UI.
+Remote sessions have no **Kết nối Muse** destination. The separate **Cài đặt server** destination contains only the shared server address editor, with no login, disconnect, or forget-key controls. It and diagnostics require the verified principal to have role `admin` **and** `global_settings: true`. User/key management independently requires role `admin` and `manage_users: true`. Missing identities, unknown roles, and capabilities without the admin role do not enable technical UI.
 
 The desktop sidebar, mobile More sheet, selection callbacks, and technical page mounting use the same permission decision. Technical pages are unmounted when not selected. Diagnostics discard in-flight responses when the verified connection changes, including replacement sessions with the same URL/key. User sessions cannot initiate diagnostics refresh through the status Cubit.
 
