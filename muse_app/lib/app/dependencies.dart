@@ -1,3 +1,5 @@
+import '../features/connection/data/repositories/client_config_repository_impl.dart';
+import '../features/connection/domain/repositories/client_config_repository.dart';
 import '../features/admin/data/repositories/admin_users_repository_impl.dart';
 import '../features/admin/domain/repositories/admin_users_repository.dart';
 import '../features/status/data/repositories/server_status_repository_impl.dart';
@@ -65,6 +67,7 @@ class AppDependencies {
       await preferences.setBool('desktop_local_mode', value);
     };
     final factory = clientFactory ?? http.Client.new;
+    clientConfig = ClientConfigRepositoryImpl(factory);
     final api = JsonApiClient(factory);
     adminUsers = AdminUsersRepositoryImpl(api);
     loadServerStatus = LoadServerStatus(ServerStatusRepositoryImpl(api));
@@ -106,6 +109,7 @@ class AppDependencies {
   final pickReferenceImages = const PickReferenceImages(
     DeviceReferenceFileSource(),
   );
+  late final ClientConfigRepository clientConfig;
   late final PendingGenerationStore pendingGenerations;
   late final AdminUsersRepository adminUsers;
   late final ConnectionRepositoryImpl connectionRepository;

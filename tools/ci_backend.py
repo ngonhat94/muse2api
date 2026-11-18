@@ -21,6 +21,7 @@ EXCLUDED = {
 }
 CASES = tuple((name, args) for name, args in (
     ('test_ci_backend.py', ()),
+    ('test_client_config.py', ()),
     ('test_deploy.py', ()),
     ('test_bootstrap_vps.py', ()),
     ('test_account_proxy.py', ('--offline',)),

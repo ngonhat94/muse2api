@@ -30,7 +30,8 @@ void main() {
             prefs,
             credentialStore: MemoryCredentialStore(),
             clientFactory: () => MockClient((r) async {
-              requests++;
+              // Startup may read the public directory; handoff never calls Muse.
+              if (r.url.path != '/public/client-config') requests++;
               return http.Response('{}', 500);
             }),
           ),

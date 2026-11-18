@@ -1765,6 +1765,32 @@ def models(_=Depends(auth)):
     return {"object": "list", "data": MODELS}
 
 
+from client_config import ClientConfigStore
+
+client_config = ClientConfigStore(os.path.join(CFG.base_dir, 'data', 'client-config.json'))
+
+
+@app.get('/public/client-config')
+def public_client_config():
+    return JSONResponse(client_config.read(), headers={'Cache-Control': 'no-store'})
+
+
+class ClientConfigUpdate(BaseModel):
+    model_config = {'extra': 'forbid'}
+    server_url: str = Field(min_length=1, max_length=2048)
+
+
+@app.post('/admin/client-config')
+def update_client_config(req: ClientConfigUpdate, _=Depends(admin_auth)):
+    try:
+        client_config.save(req.server_url)
+        return JSONResponse(client_config.read(), headers={'Cache-Control': 'no-store'})
+    except ValueError:
+        raise HTTPException(400, 'Expected a public HTTPS server URL without credentials, query or fragment') from None
+    except OSError:
+        raise HTTPException(503, 'Unable to save client configuration') from None
+
+
 @app.get("/v1/me")
 def current_principal(principal=Depends(auth)):
     return {"id": principal["id"], "label": principal.get("label", ""),
@@ -3428,7 +3454,7 @@ def get_keepalive_status(principal=Depends(auth)):
 # ------------------------- 仓库实时更新检测、通知与一键在线升级 -------------------------
 REPO_URL = "https://github.com/czg86389-hub/muse2api"
 TRACKED_REPO_PATHS = [
-    "app.py", "engine.py", "store.py", "tenant.py", "cdp.py", "config.py", "proxy.py",
+    "app.py", "client_config.py", "engine.py", "store.py", "tenant.py", "cdp.py", "config.py", "proxy.py",
     "admin.html", "README.md", "version.json", "requirements.txt",
     "Dockerfile", "docker-compose.yml", ".env.example", ".gitignore",
     "LICENSE", "extension", "deploy", "tools",

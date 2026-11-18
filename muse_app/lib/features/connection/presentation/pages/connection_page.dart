@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/connection_bloc.dart';
 import 'local_engine_panel.dart';
+import 'client_config_editor.dart';
+import '../../domain/repositories/client_config_repository.dart';
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key, this.savedAddress});
@@ -14,20 +16,11 @@ class ConnectionPage extends StatefulWidget {
 }
 
 class _ConnectionPageState extends State<ConnectionPage> {
-  late final TextEditingController _address;
   final _key = TextEditingController();
   bool _obscure = true;
-  @override
-  void initState() {
-    super.initState();
-    _address = TextEditingController(
-      text: widget.savedAddress ?? 'http://localhost:18610',
-    );
-  }
-
+  bool _bootstrapAdmin = false;
   @override
   void dispose() {
-    _address.dispose();
     _key.dispose();
     super.dispose();
   }
@@ -39,15 +32,21 @@ class _ConnectionPageState extends State<ConnectionPage> {
     listener: (context, state) {
       final saved = state.savedConnection;
       if (saved != null && state.error == null) {
-        _address.text = saved.baseUrl;
-        _key.text = saved.apiKey;
+        final bloc = context.read<ConnectionBloc>();
+        _key.text =
+            saved.baseUrl ==
+                (_bootstrapAdmin ? bootstrapServerUrl : bloc.sharedAddress)
+            ? saved.apiKey
+            : '';
       } else if (state.status == ConnectionStatus.disconnected &&
           state.error == null) {
         _key.clear();
       }
     },
     builder: (context, state) {
-      final busy = state.status == ConnectionStatus.connecting;
+      final bloc = context.read<ConnectionBloc>();
+      final busy =
+          state.status == ConnectionStatus.connecting || bloc.loadingConfig;
       final connected =
           state.status == ConnectionStatus.connected && !state.localMode;
       final localAvailable = context.read<ConnectionBloc>().supportsLocal;
@@ -66,24 +65,35 @@ class _ConnectionPageState extends State<ConnectionPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      connected ? 'Đã kết nối' : 'Cấu hình server',
+                      connected ? 'Đã kết nối' : 'Đăng nhập server',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
-              TextField(
-                controller: _address,
-                enabled: !busy && !connected,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Địa chỉ server',
-                  hintText: 'https://muse.example.com',
-                  helperText: 'Địa chỉ gốc, không thêm /v1.',
-                  prefixIcon: Icon(Icons.link),
+              const Text(
+                'Địa chỉ server',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                state.connection?.baseUrl ??
+                    (_bootstrapAdmin ? bootstrapServerUrl : bloc.sharedAddress),
+              ),
+              if (!connected && bloc.sharedAddress != bootstrapServerUrl)
+                CheckboxListTile(
+                  value: _bootstrapAdmin,
+                  onChanged: busy
+                      ? null
+                      : (value) => setState(() {
+                          _bootstrapAdmin = value == true;
+                          _key.clear();
+                        }),
+                  title: const Text('Quản trị cấu hình tại server bootstrap'),
                 ),
+              const Text(
+                'Server do quản trị viên cấu hình. Bạn chỉ cần nhập API key.',
               ),
               const SizedBox(height: 20),
               if (!connected)
@@ -148,6 +158,16 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     ),
                   ),
                 ),
+              if (connected &&
+                  state.connection?.principal?.isAdmin == true &&
+                  state.connection?.principal?.can('global_settings') == true &&
+                  bloc.clientConfig != null)
+                ClientConfigEditor(
+                  key: ObjectKey(state.connection),
+                  connection: state.connection!,
+                  repository: bloc.clientConfig!,
+                  address: bloc.sharedAddress,
+                ),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: busy || state.connection?.isLocal == true
@@ -193,7 +213,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                   label: const Text('Quên API key đã lưu'),
                 ),
               const Text(
-                'Ứng dụng nhớ server và API key trên thiết bị, tự kết nối lại khi mở. '
+                'Ứng dụng nhớ API key trên thiết bị, chỉ tự kết nối lại khi địa chỉ không đổi. '
                 'Ngắt kết nối vẫn giữ key; chọn Quên API key để xóa.',
                 style: TextStyle(
                   color: StudioColors.muted,
@@ -247,24 +267,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
                   )
                 else
                   remotePanel,
-                if (!localAvailable) ...[
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Kết nối từ thiết bị khác?',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Android Emulator: dùng 10.0.2.2 thay localhost. Điện thoại thật: '
-                    'dùng IP LAN hoặc tên miền của server. Với Flutter Web chạy trên HTTPS, '
-                    'server cũng cần HTTPS.',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      height: 1.6,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -278,6 +280,12 @@ class _ConnectionPageState extends State<ConnectionPage> {
         bloc.state.status == ConnectionStatus.connecting) {
       return;
     }
-    bloc.add(ConnectionRequested(_address.text, _key.text));
+    if (bloc.loadingConfig) return;
+    bloc.add(
+      ConnectionRequested(
+        _bootstrapAdmin ? bootstrapServerUrl : bloc.sharedAddress,
+        _key.text,
+      ),
+    );
   }
 }
