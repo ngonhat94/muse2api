@@ -1,3 +1,5 @@
+import '../features/admin/data/repositories/admin_users_repository_impl.dart';
+import '../features/admin/domain/repositories/admin_users_repository.dart';
 import '../features/status/data/repositories/server_status_repository_impl.dart';
 import '../features/status/domain/usecases/load_server_status.dart';
 import '../features/accounts/domain/usecases/manage_proxy.dart';
@@ -64,6 +66,7 @@ class AppDependencies {
     };
     final factory = clientFactory ?? http.Client.new;
     final api = JsonApiClient(factory);
+    adminUsers = AdminUsersRepositoryImpl(api);
     loadServerStatus = LoadServerStatus(ServerStatusRepositoryImpl(api));
     manageProxy = ManageProxy(ProxyRepositoryImpl(api));
     chatHistory = ManageChatHistory(
@@ -104,6 +107,7 @@ class AppDependencies {
     DeviceReferenceFileSource(),
   );
   late final PendingGenerationStore pendingGenerations;
+  late final AdminUsersRepository adminUsers;
   late final ConnectionRepositoryImpl connectionRepository;
   late final DesktopEngine desktopEngine;
   late final Future<bool?> Function() readLocalPreference;
