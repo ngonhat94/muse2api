@@ -46,19 +46,25 @@ void main() {
           ),
         ),
       );
-      await t.scrollUntilVisible(
-        find.text('Kết nối server để xem trạng thái.'),
-        200,
-      );
-      expect(find.text('Kết nối server để xem trạng thái.'), findsOneWidget);
+      expect(find.text('Trạng thái server'), findsNothing);
       const connection = ServerConnection(
         baseUrl: 'https://example.test',
         apiKey: 'fixture',
       );
+      connection.attachPrincipal(
+        const ServerPrincipal(
+          id: 'fixture',
+          label: 'Fixture',
+          role: 'admin',
+          capabilities: {'global_settings': true},
+        ),
+      );
       bloc.connectionChanged(connection);
       await t.pumpAndSettle();
       expect(repository.calls, isEmpty);
+      await t.scrollUntilVisible(find.text('Chưa tải trạng thái.'), 200);
       expect(find.text('Chưa tải trạng thái.'), findsOneWidget);
+      await t.scrollUntilVisible(find.text('Tải trạng thái server'), -200);
       await t.tap(find.text('Tải trạng thái server'));
       await t.pump();
       expect(
@@ -100,12 +106,8 @@ void main() {
       expect(testerException(t), isNull);
       bloc.connectionChanged(null);
       await t.pumpAndSettle();
-      await t.scrollUntilVisible(
-        find.text('Kết nối server để xem trạng thái.'),
-        200,
-      );
       expect(find.text('Không chạy tại thời điểm tải'), findsNothing);
-      expect(find.text('Kết nối server để xem trạng thái.'), findsOneWidget);
+      expect(find.text('Trạng thái server'), findsNothing);
     },
   );
   for (final size in [
@@ -135,7 +137,7 @@ void main() {
                         'id': 'admin',
                         'label': 'Synthetic administrator',
                         'role': 'admin',
-                        'capabilities': {'global_admin': true},
+                        'capabilities': {'global_settings': true},
                       }
                     : r.url.path == '/admin/status'
                     ? {
@@ -154,9 +156,7 @@ void main() {
         );
         await t.pumpWidget(MuseApp(dependencies: dependencies));
         await t.pumpAndSettle();
-        final context = t.element(
-          find.byType(ServerStatusPage, skipOffstage: false),
-        );
+        final context = t.element(find.byType(AppShell));
         final connection = context.read<ConnectionBloc>();
         await t.runAsync(() async {
           connection.add(
