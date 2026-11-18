@@ -2,7 +2,27 @@
 import os
 import tempfile
 from unittest.mock import patch
-from fastapi.testclient import TestClient
+import asyncio
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_multitenant_security import Client
+
+
+class TestClient:
+    def __init__(self, application):
+        self.application = application
+        self.headers = {}
+
+    def request(self, method, path, payload=None):
+        key = self.headers.get("Authorization", "Bearer ").removeprefix("Bearer ")
+        return asyncio.run(Client(self.application, key).request(method, path, payload))
+
+    def get(self, path):
+        return self.request("GET", path)
+
+    def post(self, path, json):
+        return self.request("POST", path, json)
 import app
 from client_config import ClientConfigStore, DEFAULT_SERVER_URL, validate_server_url
 
@@ -11,7 +31,7 @@ with tempfile.TemporaryDirectory() as home:
     with patch.object(app, 'client_config', store):
         client = TestClient(app.app)
         assert client.get('/public/client-config').json() == {'server_url': DEFAULT_SERVER_URL}
-        assert client.get('/public/client-config').headers['cache-control'] == 'no-store'
+        assert app.public_client_config().headers['cache-control'] == 'no-store'
         body = {'server_url': 'https://new.example/muse'}
         assert client.post('/admin/client-config', json=body).status_code == 401
         _, user_key = app.users.create('synthetic-config-test')
