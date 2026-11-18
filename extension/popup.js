@@ -105,7 +105,9 @@ function applyLang() {
 function log(html, cls) {
   const el = $('log');
   el.className = 'show';
-  el.innerHTML = cls ? `<span class="${cls}">${html}</span>` : html;
+  el.textContent = html;
+  el.style.whiteSpace = 'pre-wrap';
+  el.className = 'show ' + (cls || '');
 }
 
 /* 规范化服务地址：去掉结尾斜杠和 /v1 后缀 */
@@ -122,7 +124,7 @@ async function loadCfg() {
   const o = await chrome.storage.local.get(STORE);
   const c = o[STORE] || {};
   if (c.base) $('base').value = c.base;
-  if (c.key) $('key').value = c.key;
+  if (c.key) { delete c.key; await chrome.storage.local.set({ [STORE]: c }); }
   if (c.label) $('label').value = c.label;
   // 没有配置过就尝试从当前标签页猜一个（用户在管理页上时）
   if (!c.base) {
@@ -142,7 +144,6 @@ async function saveCfg() {
   await chrome.storage.local.set({
     [STORE]: {
       base: normBase($('base').value),
-      key: $('key').value.trim(),
       label: $('label').value.trim(),
     },
   });
@@ -153,7 +154,7 @@ async function grabCookies() {
   const out = {}, exp = {};
   for (const c of all) {
     const dom = (c.domain || '').replace(/^\./, '');
-    if (!dom.endsWith('muse.ai')) continue;
+    if (dom !== 'muse.ai' && !dom.endsWith('.muse.ai')) continue;
     out[c.name] = c.value;
     if (c.expirationDate) exp[c.name] = Math.floor(c.expirationDate);
   }
@@ -172,6 +173,8 @@ async function run() {
   log(t('正在读取 muse.ai 的 Cookie…'));
 
   try {
+    const permission = new URL(base).origin + '/*';
+    if (!await chrome.permissions.request({ origins: [permission] })) return log('Host permission denied', 'bad');
     const { cookies, expires } = await grabCookies();
     const names = Object.keys(cookies);
     if (!names.length) {
@@ -190,6 +193,8 @@ async function run() {
 
     const r = await fetch(base + '/admin/accounts', {
       method: 'POST',
+      redirect: 'error',
+      credentials: 'omit',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + key,

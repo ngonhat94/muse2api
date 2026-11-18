@@ -3,8 +3,11 @@ import json
 root=Path(__file__).resolve().parents[1]
 v=json.loads((root/'version.json').read_text())
 m=json.loads((root/'extension/manifest.json').read_text())
-assert m['version']=='1.0.2'
-assert m['version'] in '\n'.join(v['highlights']) and m['version'] in '\n'.join(v['highlights_en'])
+assert m['version']=='1.1.0'
+# Historical server release notice remains intact; new extension bridge has its own guide.
+assert '1.0.2' in '\n'.join(v['highlights']) and '1.0.2' in '\n'.join(v['highlights_en'])
+assert m['version'] in (root/'docs/BROWSER_ACCOUNT_IMPORT.md').read_text()
+assert f"v{m['version']}" in (root/'extension/popup.html').read_text()
 assert '手动' in '\n'.join(v['highlights']) and 'every browser profile' in '\n'.join(v['highlights_en'])
 html=(root/'admin.html').read_text()
 assert 'id="extensionUpgradeNotice"' in html and '"extension-upgrade-notice":' in html
