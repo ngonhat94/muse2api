@@ -72,9 +72,18 @@ class AppDependencies {
     final rawFactory = clientFactory ?? http.Client.new;
     http.Client factory() {
       final rejected = onCredentialRejected;
-      return SessionClient(rawFactory(), (uri, authorization) {
-        rejected?.call(uri, authorization);
-      });
+      final generation = _transportGeneration;
+      final client = SessionClient(
+        rawFactory(),
+        (uri, authorization) {
+          rejected?.call(uri, authorization);
+        },
+        isCurrent: () =>
+            _transportEnabled && generation == _transportGeneration,
+      );
+      _clients.removeWhere((entry) => entry.isClosed);
+      _clients.add(client);
+      return client;
     }
 
     clientConfig = ClientConfigRepositoryImpl(factory);
@@ -112,6 +121,22 @@ class AppDependencies {
       ChatRepositoryImpl(ChatRemoteDataSource(factory)),
     );
   }
+  final _clients = <SessionClient>[];
+  int _transportGeneration = 0;
+  bool _transportEnabled = true;
+  void endSession() {
+    _transportEnabled = false;
+    ++_transportGeneration;
+    for (final client in _clients) {
+      client.close();
+    }
+    _clients.clear();
+  }
+
+  void startSession() {
+    _transportEnabled = true;
+  }
+
   void Function(Uri, String)? onCredentialRejected;
 
   // Intentionally separate from the Muse transport factory.

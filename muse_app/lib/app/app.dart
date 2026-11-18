@@ -33,52 +33,54 @@ class MuseApp extends StatelessWidget {
   final bool requireKey;
 
   @override
-  Widget build(BuildContext context) =>
-      RepositoryProvider<AppDependencies>.value(
-        value: dependencies,
-        child: RepositoryProvider<SaveMedia>.value(
-          value: dependencies.saveMedia,
-          child: RepositoryProvider<PickReferenceImages>.value(
-            value: dependencies.pickReferenceImages,
-            child: RepositoryProvider<ManageProxy>.value(
-              value: dependencies.manageProxy,
-              child: BlocProvider(
-                create: (_) => ConnectionBloc(
-                  dependencies.connectServer,
-                  restore: dependencies.restoreConnection,
-                  clientConfig: dependencies.clientConfig,
-                  forget: dependencies.forgetConnection,
-                  desktop: dependencies.desktopEngine,
-                  readLocalPreference: dependencies.readLocalPreference,
-                  saveLocalPreference: dependencies.saveLocalPreference,
-                )..add(ConnectionRestored()),
-                child: BlocBuilder<ConnectionBloc, ServerConnectionState>(
-                  builder: (context, state) {
-                    final authenticated =
-                        !requireKey ||
-                        (state.status == ConnectionStatus.connected &&
-                            state.connection?.principal != null);
-                    return MaterialApp(
-                      // Replacing the Navigator also removes dialogs/routes carrying
-                      // secrets. Session-scoped providers below are disposed as well.
-                      key: requireKey ? ObjectKey(state.connection) : null,
-                      title: 'Muse Studio',
-                      debugShowCheckedModeBanner: false,
-                      theme: StudioTheme.dark,
-                      home: authenticated
-                          ? _Session(
-                              dependencies: dependencies,
-                              web: requireKey,
-                            )
-                          : const KeyLoginPage(),
-                    );
-                  },
-                ),
-              ),
+  Widget build(
+    BuildContext context,
+  ) => RepositoryProvider<AppDependencies>.value(
+    value: dependencies,
+    child: RepositoryProvider<SaveMedia>.value(
+      value: dependencies.saveMedia,
+      child: RepositoryProvider<PickReferenceImages>.value(
+        value: dependencies.pickReferenceImages,
+        child: RepositoryProvider<ManageProxy>.value(
+          value: dependencies.manageProxy,
+          child: BlocProvider(
+            create: (_) => ConnectionBloc(
+              dependencies.connectServer,
+              restore: dependencies.restoreConnection,
+              clientConfig: dependencies.clientConfig,
+              forget: dependencies.forgetConnection,
+              desktop: dependencies.desktopEngine,
+              readLocalPreference: dependencies.readLocalPreference,
+              saveLocalPreference: dependencies.saveLocalPreference,
+              onSessionEnded: dependencies.endSession,
+              onSessionStarting: dependencies.startSession,
+            )..add(ConnectionRestored()),
+            child: BlocBuilder<ConnectionBloc, ServerConnectionState>(
+              builder: (context, state) {
+                final authenticated =
+                    !requireKey ||
+                    (state.status == ConnectionStatus.connected &&
+                        state.connection?.principal != null);
+                return MaterialApp(
+                  // Replacing the Navigator also removes dialogs/routes carrying
+                  // secrets. Session-scoped providers below are disposed as well.
+                  key: requireKey
+                      ? ObjectKey(state.connection)
+                      : ValueKey(context.read<ConnectionBloc>().logoutRevision),
+                  title: 'Muse Studio',
+                  debugShowCheckedModeBanner: false,
+                  theme: StudioTheme.dark,
+                  home: authenticated
+                      ? _Session(dependencies: dependencies, web: requireKey)
+                      : const KeyLoginPage(),
+                );
+              },
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _Session extends StatefulWidget {

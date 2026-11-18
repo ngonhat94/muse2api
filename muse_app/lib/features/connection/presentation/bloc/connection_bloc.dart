@@ -40,6 +40,9 @@ class ConnectionDisconnected extends ConnectionEvent {}
 
 class ConnectionForgotten extends ConnectionEvent {}
 
+/// Local logout only: never revokes a server key or cancels backend work.
+class LogoutRequested extends ConnectionEvent {}
+
 class _LocalEngineExited extends ConnectionEvent {
   _LocalEngineExited(this.attempt);
   final int attempt;
@@ -55,6 +58,8 @@ class ServerConnectionState {
     this.error,
     this.localMode = false,
     this.installation,
+    this.loggingOut = false,
+    this.credentialRemovalFailed = false,
   });
   final ConnectionStatus status;
   final ServerConnection? connection;
@@ -62,6 +67,8 @@ class ServerConnectionState {
   final String? error;
   final bool localMode;
   final DesktopInstallStage? installation;
+  final bool loggingOut;
+  final bool credentialRemovalFailed;
 }
 
 class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
@@ -73,6 +80,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
     this.desktop,
     this.readLocalPreference,
     this.saveLocalPreference,
+    this.onSessionEnded,
+    this.onSessionStarting,
   }) : super(const ServerConnectionState()) {
     _exitSubscription = desktop?.unexpectedExit.listen((_) {
       final connection = state.connection;
@@ -95,8 +104,37 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
         ),
       );
     });
+    on<LogoutRequested>((event, emit) async {
+      if (state.loggingOut || state.connection?.isLocal == true) return;
+      final attempt = ++_attempt;
+      loadingConfig = false;
+      ++logoutRevision;
+      onSessionEnded?.call();
+      emit(const ServerConnectionState(loggingOut: true));
+      try {
+        if (forget == null) throw StateError('Credential store unavailable');
+        await forget!();
+        if (!emit.isDone && attempt == _attempt) {
+          emit(const ServerConnectionState());
+        }
+      } catch (_) {
+        if (!emit.isDone && attempt == _attempt) {
+          emit(
+            const ServerConnectionState(
+              credentialRemovalFailed: true,
+              error: 'Đã ngắt phiên, nhưng chưa xóa được API key đã lưu. Thử xóa lại trước khi rời thiết bị.',
+            ),
+          );
+        }
+      }
+    });
     on<ConnectionRestored>((event, emit) async {
-      if (state.status != ConnectionStatus.disconnected) return;
+      if (state.loggingOut ||
+          state.credentialRemovalFailed ||
+          state.status != ConnectionStatus.disconnected) {
+        return;
+      }
+      onSessionStarting?.call();
       final attempt = ++_attempt;
       try {
         loadingConfig = clientConfig != null;
@@ -139,6 +177,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       }
     });
     on<LocalConnectionRequested>((event, emit) async {
+      if (state.loggingOut || state.credentialRemovalFailed) return;
+      onSessionStarting?.call();
       if (state.status == ConnectionStatus.connecting ||
           state.connection?.isLocal == true) {
         return;
@@ -251,7 +291,12 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       (event, emit) => _cancelInstallation(emit),
     );
     on<ConnectionRequested>((event, emit) async {
-      if (state.status == ConnectionStatus.connecting) return;
+      if (state.loggingOut ||
+          state.credentialRemovalFailed ||
+          state.status == ConnectionStatus.connecting) {
+        return;
+      }
+      onSessionStarting?.call();
       final attempt = ++_attempt;
       final saved = state.savedConnection;
       emit(
@@ -289,6 +334,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       }
     });
     on<ConnectionDisconnected>((event, emit) async {
+      if (state.loggingOut || state.credentialRemovalFailed) return;
+      onSessionEnded?.call();
       if (state.installation != null) {
         await _cancelInstallation(emit);
         return;
@@ -305,6 +352,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       await desktop?.stop();
     });
     on<ConnectionForgotten>((event, emit) async {
+      if (state.loggingOut || state.credentialRemovalFailed) return;
       if (state.status == ConnectionStatus.connecting || forget == null) return;
       final attempt = ++_attempt;
       try {
@@ -337,6 +385,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       }
     });
   }
+  final void Function()? onSessionEnded;
+  final void Function()? onSessionStarting;
   final ConnectServer connect;
   final RestoreConnection? restore;
   final ClientConfigRepository? clientConfig;
@@ -353,6 +403,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       : null;
   bool get supportsInstallation => supportsLocal && _installer != null;
   int _attempt = 0;
+  int logoutRevision = 0;
   Future<void> _cancelInstallation(Emitter<ServerConnectionState> emit) async {
     if (state.installation == null ||
         state.installation == DesktopInstallStage.cancelling) {

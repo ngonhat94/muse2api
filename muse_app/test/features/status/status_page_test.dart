@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:muse_app/app/shell.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -169,7 +170,20 @@ void main() {
           await t.pumpAndSettle();
           await t.ensureVisible(find.text('Trạng thái server'));
         }
-        await t.ensureVisible(find.text('Trạng thái server'));
+        if (size.width >= 800) {
+          await t.scrollUntilVisible(
+            find.text('Trạng thái server'),
+            180,
+            scrollable: find
+                .descendant(
+                  of: find.byType(AppShell),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+        } else {
+          await t.ensureVisible(find.text('Trạng thái server'));
+        }
         await t.pumpAndSettle();
         await t.tap(find.text('Trạng thái server'));
         await t.pumpAndSettle();
