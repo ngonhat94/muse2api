@@ -30,7 +30,13 @@ import '../features/media/presentation/pages/media_page.dart';
 import '../features/admin/presentation/pages/admin_users_page.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, this.savedAddress, this.storageRepository});
+  const AppShell({
+    super.key,
+    this.savedAddress,
+    this.storageRepository,
+    this.startConnected = false,
+  });
+  final bool startConnected;
   final StorageRepository? storageRepository;
   final String? savedAddress;
   @override
@@ -42,6 +48,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.startConnected) {
+      _selected = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final connection = context.read<ConnectionBloc>().state.connection;
+        context.read<GenerationRecoveryCubit>().connect(connection);
+        context.read<ServerStatusBloc>().connectionChanged(connection);
+        context.read<ChatBloc>().add(ChatSessionChanged(connection));
+      });
+    }
   }
 
   @override

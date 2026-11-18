@@ -17,6 +17,7 @@ import '../core/data/media_saver_factory.dart';
 import '../core/domain/save_media.dart';
 import '../core/domain/pick_reference_images.dart';
 import '../core/network/json_api_client.dart';
+import '../core/network/session_client.dart';
 import '../features/videos/data/repositories/video_repository_impl.dart';
 import '../features/videos/domain/usecases/generate_video.dart';
 import '../features/tasks/data/repositories/task_repository_impl.dart';
@@ -68,7 +69,14 @@ class AppDependencies {
     saveLocalPreference = (value) async {
       await preferences.setBool('desktop_local_mode', value);
     };
-    final factory = clientFactory ?? http.Client.new;
+    final rawFactory = clientFactory ?? http.Client.new;
+    http.Client factory() {
+      final rejected = onCredentialRejected;
+      return SessionClient(rawFactory(), (uri, authorization) {
+        rejected?.call(uri, authorization);
+      });
+    }
+
     clientConfig = ClientConfigRepositoryImpl(factory);
     final api = JsonApiClient(factory);
     adminUsers = AdminUsersRepositoryImpl(api);
@@ -104,6 +112,8 @@ class AppDependencies {
       ChatRepositoryImpl(ChatRemoteDataSource(factory)),
     );
   }
+  void Function(Uri, String)? onCredentialRejected;
+
   // Intentionally separate from the Muse transport factory.
   final imagePromptRepository = ImagePromptRepositoryImpl(http.Client.new);
   final textPromptRepository = TextPromptRepositoryImpl(http.Client.new);
