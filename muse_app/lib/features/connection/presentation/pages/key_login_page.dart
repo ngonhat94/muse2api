@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/connection_bloc.dart';
+import '../widgets/shiba_loading.dart';
 
 /// Public web entry point. No feature widgets or credential prefill live here.
 class KeyLoginPage extends StatefulWidget {
@@ -31,6 +32,7 @@ class _KeyLoginPageState extends State<KeyLoginPage> {
   Widget build(BuildContext context) =>
       BlocBuilder<ConnectionBloc, ServerConnectionState>(
         builder: (context, state) {
+          if (state.restoring) return const ShibaLoadingPage();
           final busy =
               state.status == ConnectionStatus.connecting ||
               state.loggingOut ||

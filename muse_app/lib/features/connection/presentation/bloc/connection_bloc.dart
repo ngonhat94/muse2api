@@ -15,7 +15,8 @@ import '../../domain/usecases/restore_connection.dart';
 sealed class ConnectionEvent {}
 
 class ConnectionRequested extends ConnectionEvent {
-  ConnectionRequested(this.address, this.apiKey);
+  ConnectionRequested(this.address, this.apiKey, {this.restoring = false});
+  final bool restoring;
   final String address;
   final String apiKey;
   @override
@@ -60,6 +61,7 @@ class ServerConnectionState {
     this.installation,
     this.loggingOut = false,
     this.credentialRemovalFailed = false,
+    this.restoring = false,
   });
   final ConnectionStatus status;
   final ServerConnection? connection;
@@ -69,6 +71,7 @@ class ServerConnectionState {
   final DesktopInstallStage? installation;
   final bool loggingOut;
   final bool credentialRemovalFailed;
+  final bool restoring;
 }
 
 class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
@@ -82,7 +85,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
     this.saveLocalPreference,
     this.onSessionEnded,
     this.onSessionStarting,
-  }) : super(const ServerConnectionState()) {
+    bool startRestoring = false,
+  }) : super(ServerConnectionState(restoring: startRestoring)) {
     _exitSubscription = desktop?.unexpectedExit.listen((_) {
       final connection = state.connection;
       if (!isClosed &&
@@ -136,35 +140,53 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
       }
       onSessionStarting?.call();
       final attempt = ++_attempt;
+      emit(const ServerConnectionState(restoring: true));
       try {
         loadingConfig = clientConfig != null;
         if (loadingConfig)
           emit(
-            const ServerConnectionState(status: ConnectionStatus.connecting),
+            const ServerConnectionState(
+              status: ConnectionStatus.connecting,
+              restoring: true,
+            ),
           );
-        final address = await clientConfig?.load() ?? defaultServerUrl;
+        final address =
+            await clientConfig?.load().timeout(const Duration(seconds: 15)) ??
+            defaultServerUrl;
         if (emit.isDone || attempt != _attempt) return;
         sharedAddress = address;
         loadingConfig = false;
-        final local = await readLocalPreference?.call();
+        final local = await readLocalPreference?.call().timeout(
+          const Duration(seconds: 15),
+        );
         ServerConnection? saved;
         try {
-          saved = await restore?.call();
+          saved = await restore?.call().timeout(const Duration(seconds: 15));
         } catch (_) {
           // Local startup does not require reading a remote server's Keychain
           // record. Keep that record intact for later remote use.
           if (desktop?.supported != true || local != true) rethrow;
         }
         if (emit.isDone || attempt != _attempt) return;
-        emit(ServerConnectionState(savedConnection: saved));
+        emit(
+          ServerConnectionState(
+            savedConnection: saved,
+            restoring:
+                saved != null &&
+                (clientConfig == null || saved.baseUrl == sharedAddress),
+          ),
+        );
         if (desktop?.supported == true &&
             (local == true || (local == null && saved == null))) {
           add(LocalConnectionRequested());
         } else if (saved != null &&
             (clientConfig == null || saved.baseUrl == sharedAddress)) {
-          add(ConnectionRequested(saved.baseUrl, saved.apiKey));
+          add(
+            ConnectionRequested(saved.baseUrl, saved.apiKey, restoring: true),
+          );
         }
       } catch (error) {
+        loadingConfig = false;
         if (!emit.isDone && attempt == _attempt) {
           emit(
             ServerConnectionState(
@@ -303,6 +325,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, ServerConnectionState> {
         ServerConnectionState(
           status: ConnectionStatus.connecting,
           savedConnection: saved,
+          restoring: event.restoring,
         ),
       );
       try {

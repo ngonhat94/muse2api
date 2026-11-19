@@ -17,7 +17,87 @@ import 'package:muse_app/features/connection/presentation/pages/key_login_page.d
 
 import 'support/memory_credential_store.dart';
 
+class _PendingCredentialStore extends MemoryCredentialStore {
+  final pending = Completer<String?>();
+  @override
+  Future<String?> read() => pending.future;
+}
+
 void main() {
+  testWidgets('stalled credential lookup times out and permits retry', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = _PendingCredentialStore();
+    final deps = AppDependencies(
+      (await tester.runAsync(SharedPreferences.getInstance))!,
+      credentialStore: store,
+      clientFactory: () => MockClient(
+        (r) async =>
+            http.Response(jsonEncode({'server_url': defaultServerUrl}), 200),
+      ),
+    );
+    await tester.pumpWidget(MuseApp(dependencies: deps, requireKey: true));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 40)),
+    );
+    await tester.pump();
+    expect(find.byType(TextField), findsNothing);
+    await tester.pump(const Duration(seconds: 16));
+    await tester.runAsync(() async {});
+    await tester.pump();
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
+    store.pending.complete(null);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets(
+    'initial saved-key lookup hides form until absent or read error',
+    (tester) async {
+      for (final fails in [false, true]) {
+        SharedPreferences.setMockInitialValues({});
+        final store = _PendingCredentialStore();
+        final deps = AppDependencies(
+          (await tester.runAsync(SharedPreferences.getInstance))!,
+          credentialStore: store,
+          clientFactory: () => MockClient(
+            (r) async => http.Response(
+              jsonEncode({'server_url': defaultServerUrl}),
+              200,
+            ),
+          ),
+        );
+        await tester.pumpWidget(MuseApp(dependencies: deps, requireKey: true));
+        expect(find.byType(TextField), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        await tester.pump();
+        expect(find.byType(TextField), findsNothing);
+        if (fails) {
+          store.pending.completeError(StateError('fixture store unavailable'));
+        } else {
+          store.pending.complete(null);
+        }
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        await tester.pump();
+        expect(find.byType(TextField), findsOneWidget);
+        expect(
+          tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+          isNotNull,
+        );
+        if (fails)
+          expect(find.textContaining('Không đọc được'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+      }
+    },
+  );
   for (final width in [390.0, 1280.0]) {
     for (final role in ['user', 'admin']) {
       testWidgets(
@@ -196,7 +276,8 @@ void main() {
       );
       await tester.pump();
       expect(find.byType(AppShell), findsNothing);
-      expect(find.byType(KeyLoginPage), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       if (status == -1) {
         tester
             .element(find.byType(KeyLoginPage))
