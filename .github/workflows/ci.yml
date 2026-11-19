@@ -13,6 +13,23 @@ concurrency:
   cancel-in-progress: false # Never interrupt an active production deployment.
 
 jobs:
+  transport-diagnostic:
+    name: Isolated SSH transport diagnostic (no runtime changes)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/deploy-upload-shell'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Stream isolated 1 GiB payload and verify remote hash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH }}
+        run: python3 tools/deploy_transport_probe.py
   backend:
     name: Server synthetic regressions and Docker build
     runs-on: ubuntu-24.04
