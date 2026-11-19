@@ -10,6 +10,8 @@
 !cdp.py
 !config.py
 !engine.py
+!generation_timing.py
+!thumbnails.py
 !idempotency.py
 !operations.py
 !protection.py

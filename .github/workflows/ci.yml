@@ -35,6 +35,11 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Guarded offline Python suite
         run: python tools/ci_backend.py
+      - name: Upstream FFmpeg and synthetic integration regressions
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          python tools/ci_upstream.py
       - name: Synthetic admin JavaScript regressions
         run: |
           set -euo pipefail
