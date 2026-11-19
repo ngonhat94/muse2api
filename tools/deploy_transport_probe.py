@@ -29,6 +29,9 @@ def commands(root, attempt):
 
 def main():
     root = os.environ['VPS_DEPLOY_PATH']
+    matches = {name: os.environ.get(name, '') == os.environ.get('EXPECTED_' + name, '')
+               for name in ['VPS_HOST', 'VPS_PORT', 'VPS_USER', 'VPS_KNOWN_HOSTS']}
+    print(json.dumps({'secret_matches_readonly_target': matches}), flush=True)
     attempt = 'diagnostic-' + secrets.token_hex(16)
     remote = commands(root, attempt)
     # Exactly 1 GiB, near the previously exported image size; no compression.
@@ -45,6 +48,12 @@ def main():
                '-o', 'PasswordAuthentication=no', '-o', 'KbdInteractiveAuthentication=no',
                '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15',
                '-o', 'ServerAliveCountMax=3', '-o', 'LogLevel=ERROR', os.environ['VPS_HOST']]
+        disk_script = ('import os,json; s=os.statvfs(' + repr(root)
+                       + '); print(json.dumps({"target_free_bytes":s.f_bavail*s.f_frsize,"target_free_inodes":s.f_favail}))')
+        state = subprocess.run(ssh + ['python3 -c ' + shlex.quote(disk_script)],
+                               capture_output=True, timeout=30)
+        if state.returncode == 0:
+            print(json.dumps(json.loads(state.stdout)), flush=True)
         h = hashlib.sha256()
         block = bytes(range(256)) * 4096
         with (p / 'payload').open('wb') as f:

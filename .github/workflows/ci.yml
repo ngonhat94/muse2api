@@ -29,6 +29,10 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH }}
+          EXPECTED_VPS_HOST: ${{ vars.VPS_HOST }}
+          EXPECTED_VPS_PORT: ${{ vars.VPS_PORT }}
+          EXPECTED_VPS_USER: ${{ vars.VPS_USER }}
+          EXPECTED_VPS_KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
         run: python3 tools/deploy_transport_probe.py
   backend:
     name: Server synthetic regressions and Docker build

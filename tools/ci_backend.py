@@ -30,6 +30,7 @@ CASES = tuple((name, args) for name, args in (
     ('test_client_config.py', ()),
     ('test_auth_cors.py', ()),
     ('test_deploy.py', ()),
+    ('test_transport_probe.py', ()),
     ('test_bootstrap_vps.py', ()),
     ('test_account_proxy.py', ('--offline',)),
     ('test_account_proxy_routing.py', ()),
