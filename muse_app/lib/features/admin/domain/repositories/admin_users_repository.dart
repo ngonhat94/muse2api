@@ -11,6 +11,7 @@ class AdminUser {
     required this.enabled,
     this.keyRevealable = false,
     this.keyActive = true,
+    this.keyActivityKnown = true,
   });
   final String id;
   final String label;
@@ -18,6 +19,7 @@ class AdminUser {
   final bool keyRevealable;
   // Older servers omit activity metadata: keep their rows visible.
   final bool keyActive;
+  final bool keyActivityKnown;
 }
 
 abstract class AdminUsersRepository {

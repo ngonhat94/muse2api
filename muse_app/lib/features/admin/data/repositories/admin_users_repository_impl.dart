@@ -39,6 +39,7 @@ class AdminUsersRepositoryImpl implements AdminUsersRepository {
             enabled: user['enabled'] == true,
             keyRevealable: user['key_revealable'] == true,
             keyActive: user['key_active'] != false,
+            keyActivityKnown: user['key_active'] is bool,
           ),
         )
         .toList();

@@ -56,6 +56,7 @@ class FakeUsers implements AdminUsersRepository {
         label: 'Fixture user',
         enabled: true,
         keyRevealable: true,
+        keyActivityKnown: false,
       ),
     ];
   }
@@ -127,6 +128,7 @@ void main() {
       );
       final users = await repository.list(connection());
       expect(users.map((u) => u.keyActive), [true, true, false]);
+      expect(users.map((u) => u.keyActivityKnown), [false, true, true]);
     },
   );
 
@@ -236,6 +238,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Server chưa cung cấp trạng thái thu hồi'),
+        findsOneWidget,
+      );
       await tester.scrollUntilVisible(
         find.text('Đã thu hồi'),
         180,
