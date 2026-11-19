@@ -396,6 +396,32 @@ class DeployTests(unittest.TestCase):
         self.assertNotIn('\n-i\n', log)
         self.assertNotIn('ibssh_abcdefghijklmnopqrstuvwxyz', log)
 
+    def test_ssh_failure_categories_never_publish_raw_stderr(self):
+        # Exercise the real wrapper while replacing only the SSH executable.
+        for message, category in (
+            ('cat: /private/secret: Permission denied', 'permission-denied'),
+            ('cat: /private/secret: No such file or directory', 'missing-path'),
+            ('cat: write error: No space left on device', 'disk-full'),
+            ('cat: write error: File too large', 'file-too-large'),
+            ('sh: set: Illegal option -C', 'shell-option'),
+            ('sh: cannot overwrite existing file /private/secret', 'target-exists'),
+            ('ssh: Connection reset by peer secret-host', 'connection-reset'),
+            ('opaque-private-secret', 'unclassified'),
+        ):
+            with self.subTest(category=category):
+                # A fixture-local stub emits a controlled failure, never network IO.
+                original = Path.write_text
+                def write(path, text, *args, **kwargs):
+                    if path.name == 'ssh':
+                        text = '#!/bin/bash\nif [[ ${!#} == *"cat > "* ]]; then\n printf "%s\\n" "$SSH_TEST_ERROR" >&2\n exit 1\nfi\ncat >/dev/null\n'
+                    return original(path, text, *args, **kwargs)
+                with patch.object(Path, 'write_text', write):
+                    result, _ = self.token_transport(SSH_TEST_ERROR=message)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('category=' + category, result.stderr)
+                self.assertNotIn(message, result.stdout + result.stderr)
+                self.assertNotIn('/private/', result.stdout + result.stderr)
+
     def test_token_mode_redacts_ssh_errors_and_preserves_failure_status(self):
         result, log = self.token_transport(SSH_MOCK_FAIL='1')
         self.assertEqual(result.returncode, 255)
