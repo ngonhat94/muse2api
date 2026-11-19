@@ -6,6 +6,37 @@ other branches and manual dispatch only test/build. No GHCR credentials needed.
 Nothing here has been deployed remotely. Workflow edits must be reviewed and
 published separately; do not blanket-add unrelated checkout changes.
 
+## Automatic bounded deployment retention
+
+Production transport uses one pinned SSH session for allocation, framed upload,
+deployment and `finally` cleanup. A private remote `.upload.lock` serializes the
+whole lifecycle (in addition to `.deploy.lock` around runtime replacement).
+Upload paths remain unique and exclusive/no-clobber. Successful and failed
+attempts remove their archive and deployment files, not runtime data. Hard-killed
+sessions are recovered on the next deployment: only marked, private, flat owned
+attempt directories older than 24 hours with an unlocked lease are eligible.
+Recent/locked, unmarked legacy, unknown-content, symlink and hard-linked paths
+are preserved. This is deployment-triggered retention, not a background timer.
+
+After health/version verification, explicit non-forced Docker image ID removal
+keeps the active image and removes unused images bearing the exact storage
+contract and revision labels, with no foreign repository tags. All images used
+by **any running or stopped container** remain protected. Untagged images are
+eligible only with those ownership labels; generic dangling images are not.
+Previous runtime images remain untouched until health succeeds, preserving the
+existing opt-in rollback; failed deployments do not prune images. There is no
+permanent spare rollback image after a successful deployment. No global prune,
+volumes, containerd files, cloudflared, profiles, config, data or swap are touched.
+
+Before receiving the archive the remote checks available bytes: archive plus
+512 MiB on the upload filesystem, and 3x archive plus 512 MiB on each detected
+Docker/containerd store filesystem (requirements sum when filesystems coincide).
+This conservative budget is not a guarantee for every image compression ratio.
+Insufficient space reports required/available bytes and stops before upload.
+**Already-full hosts and pre-existing unmarked incoming archives require a
+separately approved scoped initial cleanup**; merging this change does not
+magically free those files or authorize a live cleanup/deployment.
+
 ## Required GitHub configuration
 
 Choose the SSH transport explicitly in **Settings → Secrets and variables →

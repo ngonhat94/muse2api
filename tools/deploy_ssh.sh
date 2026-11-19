@@ -50,7 +50,8 @@ run_ssh() {
     # Only this numeric, fixed-format diagnostic is safe to forward.
     while IFS= read -r line; do
       if [[ $line =~ ^Deployment\ failed:\ disk-preflight:\ required\ [0-9]+\ bytes\;\ available\ [0-9]+\ bytes\; ]]; then
-        printf '%s\n' "$line" >&2
+        read -r _ _ _ _ required _ _ available _ <<< "$line"
+        printf 'Disk preflight: required %s bytes; available %s bytes. Approved scoped initial cleanup required; no upload started.\n' "$required" "$available" >&2
       fi
     done < "$keydir/stderr"
     while IFS= read -r line || [[ -n $line ]]; do

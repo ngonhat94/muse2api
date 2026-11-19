@@ -59,9 +59,24 @@ class RetentionTests(unittest.TestCase):
 
     def test_disk_preflight_checks_separate_and_shared_filesystems(self):
         from types import SimpleNamespace
-        with patch.object(remote, 'run', return_value='/docker'), patch.object(remote.os, 'statvfs', return_value=SimpleNamespace(f_bavail=1, f_frsize=1)), patch.object(remote.os, 'stat', return_value=SimpleNamespace(st_dev=1)):
-            with self.assertRaisesRegex(remote.DeploymentError, 'required.*available'):
+        margin = 512 * 1024 * 1024
+        for shared in (True, False):
+            required = 700 + 3 * margin if shared else 300 + margin
+            with self.subTest(shared=shared), patch.object(remote, 'run', return_value='/docker'), patch.object(Path, 'exists', return_value=True), patch.object(Path, 'stat', side_effect=lambda p: SimpleNamespace(st_dev=1 if shared else {'/data': 1, '/docker': 2, '/var/lib/containerd': 3}[str(p)]), autospec=True), patch.object(remote.os, 'statvfs', return_value=SimpleNamespace(f_bavail=required, f_frsize=1)):
                 remote.disk_preflight(Path('/data'), 100)
+                with patch.object(remote.os, 'statvfs', return_value=SimpleNamespace(f_bavail=1, f_frsize=1)):
+                    with self.assertRaisesRegex(remote.DeploymentError, 'required.*available'):
+                        remote.disk_preflight(Path('/data'), 100)
+
+    def test_receive_never_clobbers_existing_attempt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); (root / 'incoming').mkdir(mode=0o700)
+            release = root / 'incoming' / ATTEMPT; release.mkdir(mode=0o700)
+            (release / 'image.tar').write_bytes(b'preserved')
+            with patch.object(remote, 'prepare'), patch.object(remote, 'legacy_guard'), patch.object(remote, 'disk_preflight'):
+                with self.assertRaises(FileExistsError):
+                    remote.receive(root, 'a'*40, 'sha256:'+'b'*64, '1.6.10', [1, 0, 0], ATTEMPT)
+            self.assertEqual((release / 'image.tar').read_bytes(), b'preserved')
 
     def test_prune_only_owned_unused_images_and_never_force(self):
         ids = ['sha256:' + c*64 for c in 'bcdef']

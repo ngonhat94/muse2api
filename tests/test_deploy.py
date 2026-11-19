@@ -354,6 +354,7 @@ class DeployTests(unittest.TestCase):
     def test_ssh_failure_categories_never_publish_raw_stderr(self):
         # Exercise the real wrapper while replacing only the SSH executable.
         for message, category in (
+            ('Deployment failed: disk-preflight: required 123 bytes; available 45 bytes; private-secret', 'unclassified'),
             ('cat: /private/secret: Permission denied', 'permission-denied'),
             ('cat: /private/secret: No such file or directory', 'missing-path'),
             ('cat: write error: No space left on device', 'disk-full'),
@@ -368,7 +369,7 @@ class DeployTests(unittest.TestCase):
                 original = Path.write_text
                 def write(path, text, *args, **kwargs):
                     if path.name == 'ssh':
-                        text = '#!/bin/bash\nif [[ ${!#} == *"cat > "* ]]; then\n printf "%s\\n" "$SSH_TEST_ERROR" >&2\n exit 1\nfi\ncat >/dev/null\n'
+                        text = '#!/bin/bash\nif [[ ${!#} == *"--receive"* ]]; then\n printf "%s\\n" "$SSH_TEST_ERROR" >&2\n exit 1\nfi\ncat >/dev/null\n'
                     return original(path, text, *args, **kwargs)
                 with patch.object(Path, 'write_text', write):
                     result, _ = self.token_transport(SSH_TEST_ERROR=message)
@@ -376,6 +377,9 @@ class DeployTests(unittest.TestCase):
                 self.assertIn('category=' + category, result.stderr)
                 self.assertNotIn(message, result.stdout + result.stderr)
                 self.assertNotIn('/private/', result.stdout + result.stderr)
+                if 'disk-preflight' in message:
+                    self.assertIn('required 123 bytes; available 45 bytes', result.stderr)
+                    self.assertNotIn('private-secret', result.stderr)
 
     def test_token_mode_redacts_ssh_errors_and_preserves_failure_status(self):
         result, log = self.token_transport(SSH_MOCK_FAIL='1')
