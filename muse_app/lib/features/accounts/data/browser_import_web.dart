@@ -15,12 +15,12 @@ external JSAny? get _lastError;
 class BrowserImport implements BrowserAccountImport {
   static const extensionId = 'lloaecnfmnmampknhgnpagabengejlaj';
   @override
-  bool get supported =>
-      web.window.location.origin == 'https://muapp-3d6.pages.dev' &&
-      !RegExp(
-        r'Android|iPhone|iPad|Mobile',
-        caseSensitive: false,
-      ).hasMatch(web.window.navigator.userAgent);
+  BrowserImportCapability get capability => browserImportCapabilityFor(
+    origin: web.window.location.origin,
+    userAgent: web.window.navigator.userAgent,
+  );
+  @override
+  bool get supported => capability == BrowserImportCapability.supported;
   Future<Map<String, dynamic>> _request(
     Map<String, dynamic> message,
     Duration timeout,

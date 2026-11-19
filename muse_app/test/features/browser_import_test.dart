@@ -7,7 +7,10 @@ import 'package:muse_app/features/connection/domain/entities/server_connection.d
 
 class FixtureBridge implements BrowserAccountImport {
   @override
-  bool supported = true;
+  BrowserImportCapability capability = BrowserImportCapability.supported;
+  @override
+  bool get supported => capability == BrowserImportCapability.supported;
+  int pings = 0;
   bool installed = true;
   String approval = 'approved';
   String result = 'imported';
@@ -16,7 +19,11 @@ class FixtureBridge implements BrowserAccountImport {
   ServerConnection? received;
   final cancelled = <String>[];
   @override
-  Future<bool> available() async => installed;
+  Future<bool> available() async {
+    pings++;
+    return installed;
+  }
+
   @override
   Future<String> prepare() async => 'a' * 64;
   @override
@@ -39,6 +46,54 @@ const connection = ServerConnection(
 );
 Future<void> tick() => Future<void>.delayed(Duration.zero);
 void main() {
+  test('capability preserves exact origin policy and detects mobile', () {
+    expect(
+      browserImportCapabilityFor(
+        origin: approvedBrowserImportOrigin,
+        userAgent: 'Chrome desktop',
+      ),
+      BrowserImportCapability.supported,
+    );
+    for (final origin in [
+      'https://preview.pages.dev',
+      'https://unknown.example',
+      'http://muapp-3d6.pages.dev',
+      '$approvedBrowserImportOrigin.evil.example',
+    ]) {
+      expect(
+        browserImportCapabilityFor(origin: origin, userAgent: 'Chrome desktop'),
+        BrowserImportCapability.unsupportedOrigin,
+      );
+    }
+    for (final agent in ['Android', 'iPhone', 'iPad', 'Mobile']) {
+      expect(
+        browserImportCapabilityFor(
+          origin: approvedBrowserImportOrigin,
+          userAgent: agent,
+        ),
+        BrowserImportCapability.unsupportedDevice,
+      );
+    }
+  });
+  test('unsupported origin/device never ping, approve or commit', () async {
+    for (final capability in [
+      BrowserImportCapability.unsupportedOrigin,
+      BrowserImportCapability.unsupportedDevice,
+      BrowserImportCapability.native,
+    ]) {
+      final bridge = FixtureBridge()..capability = capability;
+      final cubit = BrowserImportCubit(bridge);
+      await cubit.run(connection, () => true);
+      expect(bridge.pings, 0);
+      expect(bridge.commits, 0);
+      expect(cubit.state.busy, isFalse);
+      expect(cubit.state.message, contains('thủ công'));
+      expect(cubit.state.message, isNot(contains('Chưa tìm thấy extension')));
+      expect(cubit.state.message, isNot(contains(connection.apiKey)));
+      await cubit.close();
+    }
+  });
+
   test(
     'imports once using exact captured session, no credential in state',
     () async {

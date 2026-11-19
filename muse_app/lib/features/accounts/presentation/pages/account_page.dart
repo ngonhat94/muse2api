@@ -1,3 +1,4 @@
+import '../../domain/repositories/browser_account_import.dart';
 import '../../../../app/dependencies.dart';
 import 'browser_import_button.dart';
 import 'get_cookies_guide.dart';
@@ -207,6 +208,17 @@ class _AccountPageState extends State<AccountPage> {
               ],
             ),
             const SizedBox(height: 20),
+            // One session-bound import controller, shared by both tabs.
+            if (connection != null)
+              if (context.read<AppDependencies?>()?.browserImport
+                  case final bridge?
+                  when bridge.capability != BrowserImportCapability.native)
+                BrowserImportButton(
+                  key: ObjectKey(connection),
+                  bridge: bridge,
+                  connection: connection,
+                  disabled: state.busy,
+                ),
             if (_showGuide)
               Builder(
                 builder: (guideContext) => GetCookiesGuide(
@@ -269,14 +281,6 @@ class _AccountPageState extends State<AccountPage> {
                   child: Text('Kết nối server để quản lý tài khoản.'),
                 )
               else ...[
-                if (context.read<AppDependencies?>()?.browserImport
-                    case final bridge? when bridge.supported)
-                  BrowserImportButton(
-                    key: ObjectKey(connection),
-                    bridge: bridge,
-                    connection: connection,
-                    disabled: state.busy,
-                  ),
                 if (context.read<AccountBloc>().manage.repository
                     is BatchKeepaliveRepository)
                   Align(
