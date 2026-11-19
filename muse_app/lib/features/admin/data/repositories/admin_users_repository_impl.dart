@@ -38,6 +38,7 @@ class AdminUsersRepositoryImpl implements AdminUsersRepository {
             label: user['label'] as String,
             enabled: user['enabled'] == true,
             keyRevealable: user['key_revealable'] == true,
+            keyActive: user['key_active'] != false,
           ),
         )
         .toList();

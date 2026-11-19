@@ -84,6 +84,8 @@ class UserStore:
     def public(user: dict) -> dict:
         result = {key: value for key, value in user.items()
                   if key not in ("key_hash", "key_ciphertext")}
+        # Presence, not authorization: disabled and legacy hash-only keys exist.
+        result['key_active'] = bool(user.get('key_hash'))
         result['key_revealable'] = bool(user.get('key_hash') and user.get('key_ciphertext'))
         return result
 
