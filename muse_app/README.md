@@ -1,6 +1,6 @@
 # Muse Studio
 
-Nhập cookie không copy/paste trên Chrome/Edge desktop: [hướng dẫn extension 1.1.0](../docs/BROWSER_ACCOUNT_IMPORT.md). Cần xác nhận từng lần, chỉ trên exact trusted domain; form thủ công vẫn giữ nguyên.
+Nhập cookie không copy/paste trên Chrome/Edge desktop: [hướng dẫn extension 1.1.1](../docs/BROWSER_ACCOUNT_IMPORT.md). Cần xác nhận từng lần, chỉ trên exact trusted domain; form thủ công vẫn giữ nguyên.
 
 Flutter client cho backend muse2api, dùng BLoC và Clean Architecture.
 

@@ -85,7 +85,15 @@ class _BrowserImportButtonState extends State<BrowserImportButton> {
         if (state.message != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Semantics(liveRegion: true, child: Text(state.message!)),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                state.message!,
+                softWrap: true,
+                maxLines: null,
+                overflow: TextOverflow.visible,
+              ),
+            ),
           ),
         if (state.message != null &&
             widget.bridge.capability ==
@@ -102,16 +110,21 @@ class _BrowserImportButtonState extends State<BrowserImportButton> {
               }
             },
             icon: const Icon(Icons.open_in_new),
-            label: const Text('Mở Muse Studio được hỗ trợ (tab mới)'),
+            label: const Text(
+              'Mở Muse Studio được hỗ trợ (tab mới)',
+              softWrap: true,
+              maxLines: null,
+              overflow: TextOverflow.visible,
+            ),
           ),
         if (state.message != null && !widget.bridge.supported)
-          const SelectableText(approvedBrowserImportOrigin),
+          const SelectableText(approvedBrowserImportOriginsLabel),
         if (state.message != null)
           const Text(
             'Xem tab Get Cookies để tải/cài extension hoặc chọn Nhập tài khoản để nhập thủ công.',
           ),
         const Text(
-          'Chrome/Edge desktop · Extension 1.1.0 · Cần xác nhận từng lần. Cookie không đi qua trang web.',
+          'Chrome/Edge desktop · Extension 1.1.1 · Cần xác nhận từng lần. Cookie không đi qua trang web.',
         ),
         const SizedBox(height: 12),
       ],

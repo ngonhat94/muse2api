@@ -28,12 +28,12 @@ async def main():
             assert result.status_code == 200
             with zipfile.ZipFile(io.BytesIO(result.body)) as archive:
                 manifest = json.loads(archive.read('muse2api-extension/manifest.json'))
-                assert manifest['version'] == '1.1.0'
+                assert manifest['version'] == '1.1.1'
                 assert all(n.startswith('muse2api-extension/') and '..' not in n.split('/') for n in archive.namelist())
         for key in ('', 'synthetic-invalid'):
             assert (await Client(app.app, key).request('GET', '/admin/extension')).status_code == 401
         assert (await user.request('GET', '/admin/users')).status_code == 403
-        print('PASS: admin/user authenticated ZIP 1.1.0; missing/invalid bearer 401; admin controls remain 403')
+        print('PASS: admin/user authenticated ZIP 1.1.1; missing/invalid bearer 401; admin controls remain 403')
 
 if __name__ == '__main__':
     asyncio.run(main())

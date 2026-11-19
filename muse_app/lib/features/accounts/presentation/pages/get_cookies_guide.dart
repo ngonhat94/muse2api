@@ -19,7 +19,7 @@ class GetCookiesGuide extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _Panel(
-            title: 'Cập nhật thủ công · Extension 1.1.0',
+            title: 'Cập nhật thủ công · Extension 1.1.1',
             icon: Icons.system_update_alt,
             highlighted: true,
             children: [
@@ -76,7 +76,7 @@ class GetCookiesGuide extends StatelessWidget {
               SelectableText('https://muse.ai'),
               SizedBox(height: 8),
               Text(
-                'Đăng nhập tài khoản Muse của bạn trong cùng hồ sơ Chrome/Edge đã cài extension và mở Muse Studio, không dùng ẩn danh. Quay lại Danh sách → “Nhập tài khoản từ trình duyệt”. Extension 1.1.0 mở cửa sổ xác nhận: kiểm tra trang yêu cầu và nơi nhận, rồi chọn “Cho phép nhập một lần” trong 90 giây. Nếu không nhận ra địa chỉ, hãy hủy.',
+                'Đăng nhập tài khoản Muse của bạn trong cùng hồ sơ Chrome/Edge đã cài extension và mở Muse Studio, không dùng ẩn danh. Quay lại Danh sách → “Nhập tài khoản từ trình duyệt”. Extension 1.1.1 mở cửa sổ xác nhận: kiểm tra trang yêu cầu và nơi nhận, rồi chọn “Cho phép nhập một lần” trong 90 giây. Nếu không nhận ra địa chỉ, hãy hủy.',
               ),
               SizedBox(height: 8),
               Text(
@@ -89,7 +89,7 @@ class GetCookiesGuide extends StatelessWidget {
             icon: Icons.lock_outline,
             children: [
               Text(
-                'Cookie tương đương quyền truy cập tài khoản: không gửi vào chat, ảnh chụp hoặc gói hỗ trợ. Luồng tự động gửi cookie trực tiếp từ extension đến máy chủ sau khi bạn duyệt, không trả cookie về trang web.\n\nKhông thấy extension? Kiểm tra bản 1.1.0, bật extension và tải lại trang trong cùng browser profile. Cầu nối hiện chỉ hỗ trợ https://muapp-3d6.pages.dev; domain riêng và preview không tự được tin cậy. Không tắt bảo vệ để cấp quyền cho trang lạ.\n\nKhông có phiên Muse? Đăng nhập lại muse.ai. Đã hủy/hết hạn? Chỉ nhập lại khi sẵn sàng xác nhận. Điện thoại, Safari, Firefox và ứng dụng native không có cầu nối này.',
+                'Cookie tương đương quyền truy cập tài khoản: không gửi vào chat, ảnh chụp hoặc gói hỗ trợ. Luồng tự động gửi cookie trực tiếp từ extension đến máy chủ sau khi bạn duyệt, không trả cookie về trang web.\n\nKhông thấy extension? Tải ZIP 1.1.1 mới từ backend đã cập nhật, giải nén thay bản cũ, bấm Reload tại chrome://extensions (hoặc edge://extensions), rồi tải lại trang trong cùng browser profile. Chỉ tải lại frontend không cập nhật extension. Cầu nối hỗ trợ https://muse.dntrip.xyz và https://muapp-3d6.pages.dev; các domain khác và preview không tự được tin cậy. Không tắt bảo vệ để cấp quyền cho trang lạ.\n\nKhông có phiên Muse? Đăng nhập lại muse.ai. Đã hủy/hết hạn? Chỉ nhập lại khi sẵn sàng xác nhận. Điện thoại, Safari, Firefox và ứng dụng native không có cầu nối này.',
               ),
             ],
           ),

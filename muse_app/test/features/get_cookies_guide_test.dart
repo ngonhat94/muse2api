@@ -10,15 +10,16 @@ void main() {
     final manifest = jsonDecode(
       File('../extension/manifest.json').readAsStringSync(),
     ) as Map;
-    expect(manifest['version'], '1.1.0');
+    expect(manifest['version'], '1.1.1');
     expect(manifest['externally_connectable']['matches'], [
       'https://muapp-3d6.pages.dev/*',
+      'https://muse.dntrip.xyz/*',
     ]);
     // Keep the user-facing compatibility guidance in sync with the policy.
     expect(
       File('../extension/import_policy.js').readAsStringSync(),
       contains(
-        "const origins = Object.freeze(['https://muapp-3d6.pages.dev'])",
+        "const origins = Object.freeze(['https://muapp-3d6.pages.dev', 'https://muse.dntrip.xyz'])",
       ),
     );
   });

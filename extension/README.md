@@ -1,4 +1,4 @@
-Muse Studio Web 1.1.0: xem https://github.com/ngonhat94/murouter/blob/main/docs/BROWSER_ACCOUNT_IMPORT.md.
+Muse Studio Web 1.1.1: xem https://github.com/ngonhat94/murouter/blob/main/docs/BROWSER_ACCOUNT_IMPORT.md.
 Chrome/Edge desktop: cài Load unpacked một lần, reload sau cập nhật;
 trong Muse Studio chọn Nhập tài khoản từ trình duyệt, xác nhận origin/backend
 trong cửa sổ extension từng lần. Không hỗ trợ mobile. API key không lưu trong extension.

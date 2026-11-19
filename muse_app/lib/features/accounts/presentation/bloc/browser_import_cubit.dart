@@ -34,9 +34,9 @@ class BrowserImportCubit extends Cubit<BrowserImportState> {
         BrowserImportState(
           message: switch (bridge.capability) {
             BrowserImportCapability.unsupportedOrigin =>
-              'Trang hiện tại chưa được extension cho phép. Nhập tự động chỉ hỗ trợ $approvedBrowserImportOrigin. Domain riêng và preview không tự được tin cậy. Mở trang được hỗ trợ và đăng nhập lại; API key không được chuyển sang trang mới. Bạn vẫn có thể nhập cookie thủ công.',
+              'Trang hiện tại chưa được extension cho phép. Nhập tự động chỉ hỗ trợ $approvedBrowserImportOriginsLabel. Các domain khác và preview không tự được tin cậy. Mở trang được hỗ trợ và đăng nhập lại; API key không được chuyển sang trang mới. Bạn vẫn có thể nhập cookie thủ công.',
             BrowserImportCapability.unsupportedDevice =>
-              'Thiết bị di động chưa hỗ trợ cầu nối extension. Dùng Chrome/Edge trên máy tính tại $approvedBrowserImportOrigin hoặc nhập cookie thủ công.',
+              'Thiết bị di động chưa hỗ trợ cầu nối extension. Dùng Chrome/Edge trên máy tính tại $approvedBrowserImportOriginsLabel hoặc nhập cookie thủ công.',
             _ => 'Nhập từ trình duyệt chỉ hỗ trợ Chrome/Edge trên máy tính. Bạn vẫn có thể nhập cookie thủ công.',
           },
         ),
@@ -52,7 +52,7 @@ class BrowserImportCubit extends Cubit<BrowserImportState> {
         if (valid())
           emit(
             const BrowserImportState(
-              message: 'Chưa tìm thấy extension 1.1.0. Cài hoặc tải lại extension, rồi tải lại trang. Chỉ hỗ trợ Chrome/Edge desktop trên domain được cho phép. Bạn vẫn có thể nhập cookie thủ công.',
+              message: 'Chưa tìm thấy extension 1.1.1. Cài hoặc tải lại extension, rồi tải lại trang. Chỉ hỗ trợ Chrome/Edge desktop trên domain được cho phép. Bạn vẫn có thể nhập cookie thủ công.',
             ),
           );
         return;
