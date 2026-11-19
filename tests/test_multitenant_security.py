@@ -200,11 +200,25 @@ async def main():
         assert (await b.request("GET", "/v1/me")).status_code == 401
         assert (await Client(module.app, new_key_b).request("GET", "/v1/me")).status_code == 200
 
+        data_before_revoke = {p: p.read_bytes() for p in Path(home).rglob('*')
+                              if p.is_file() and p.name != Path(module.CFG.users_file).name
+                              and not p.name.endswith('.lock')}
         assert (await admin.request("DELETE", f"/admin/users/{user_a['id']}/key")).status_code == 200
+        listed_after = (await admin.request('GET', '/admin/users')).json()['users']
+        assert next(u for u in listed_after if u['id'] == user_a['id'])['key_active'] is False
         assert (await a.request("GET", "/v1/me")).status_code == 401
         assert (await Client(module.app, "unused").request("GET", protected_url)).status_code == 401
 
         assert (await admin.request('POST', reveal_path)).status_code == 409
+
+        reissued = await admin.request('POST', f"/admin/users/{user_a['id']}/key")
+        assert reissued.status_code == 200
+        restored = Client(module.app, reissued.json()['api_key'])
+        assert (await restored.request('GET', '/v1/me')).json()['id'] == user_a['id']
+        assert next(u for u in (await admin.request('GET', '/admin/users')).json()['users']
+                    if u['id'] == user_a['id'])['key_active'] is True
+        for path, content in data_before_revoke.items():
+            assert path.read_bytes() == content, f'Tenant data changed: {path.name}'
 
         # Legacy records migrate once to the legacy admin, never to a newly created tenant.
         assert all(x.get("owner_id") for x in module.store.accounts)

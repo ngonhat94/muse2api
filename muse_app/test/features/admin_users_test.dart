@@ -91,6 +91,163 @@ class FakeUsers implements AdminUsersRepository {
 Future<void> settled() => Future<void>.delayed(Duration.zero);
 
 void main() {
+  test(
+    'key activity comes only from explicit metadata; old servers stay visible',
+    () async {
+      final repository = AdminUsersRepositoryImpl(
+        JsonApiClient(
+          () => MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'users': [
+                  {
+                    'id': 'legacy',
+                    'label': 'Legacy',
+                    'enabled': false,
+                    'key_revealable': false,
+                  },
+                  {
+                    'id': 'disabled',
+                    'label': 'Disabled',
+                    'enabled': false,
+                    'key_active': true,
+                  },
+                  {
+                    'id': 'revoked',
+                    'label': 'Revoked',
+                    'enabled': true,
+                    'key_active': false,
+                  },
+                ],
+              }),
+              200,
+            ),
+          ),
+        ),
+      );
+      final users = await repository.list(connection());
+      expect(users.map((u) => u.keyActive), [true, true, false]);
+    },
+  );
+
+  testWidgets(
+    'revoke disappears after reload and reissue restores the same user',
+    (tester) async {
+      var active = true;
+      final ids = <String>[];
+      final repository = AdminUsersRepositoryImpl(
+        JsonApiClient(
+          () => MockClient((request) async {
+            if (request.method == 'DELETE') {
+              active = false;
+              ids.add(request.url.path);
+            }
+            if (request.method == 'POST') {
+              active = true;
+              ids.add(request.url.path);
+            }
+            return http.Response(
+              jsonEncode(
+                request.method == 'GET'
+                    ? {
+                        'users': [
+                          {
+                            'id': 'retained',
+                            'label': 'Retained tenant',
+                            'enabled': true,
+                            'key_active': active,
+                          },
+                          {
+                            'id': 'disabled',
+                            'label': 'Disabled legacy',
+                            'enabled': false,
+                            'key_active': true,
+                          },
+                        ],
+                      }
+                    : {'api_key': 'synthetic-reissued'},
+              ),
+              200,
+            );
+          }),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminUsersPage(
+              repository: repository,
+              connection: connection(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Disabled legacy'), findsOneWidget);
+      await tester.tap(find.byType(PopupMenuButton<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Thu hồi'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Xác nhận'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained tenant'), findsNothing);
+      await tester.tap(find.byTooltip('Tải lại'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained tenant'), findsNothing);
+      await tester.tap(find.text('Đã thu hồi'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained tenant'), findsOneWidget);
+      expect(find.text('Disabled legacy'), findsNothing);
+      await tester.tap(find.byType(PopupMenuButton<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cấp lại key'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Xác nhận'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained tenant'), findsNothing);
+      await tester.tap(find.text('Có API key'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained tenant'), findsOneWidget);
+      expect(ids, ['/admin/users/retained/key', '/admin/users/retained/key']);
+    },
+  );
+
+  for (final width in [320.0, 768.0, 1280.0]) {
+    testWidgets('key views remain usable with large text at $width', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 1000);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: AdminUsersPage(
+              repository: FakeUsers(),
+              connection: connection(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Đã thu hồi'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Đã thu hồi'));
+      await tester.pumpAndSettle();
+      expect(find.text('Không có key đã thu hồi.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('admin destination is gated on desktop and mobile', (
     tester,
   ) async {

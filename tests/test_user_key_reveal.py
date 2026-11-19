@@ -45,6 +45,39 @@ class KeyRevealTests(unittest.TestCase):
         self.assertIsNone(self.store.reveal(user['id']))
         self.assertNotIn('key_ciphertext', Path(self.path).read_text())
 
+    def test_key_activity_survives_reload_and_reissue_preserves_user_data(self):
+        user, raw = self.store.create('Retained tenant')
+        uid = user['id']
+        self.assertTrue(user['key_active'])
+        self.store.patch(uid, enabled=False)
+        disabled = self.store.list()[0]
+        self.assertTrue(disabled['key_active'])
+        self.assertFalse(disabled['enabled'])
+        rows = json.loads(Path(self.path).read_text())
+        rows[0].pop('key_ciphertext')
+        rows[0]['limits'] = {'daily_tasks': 7}
+        rows[0]['owner_data'] = {'account_ids': ['account-fixture'], 'task_ids': ['task-fixture']}
+        Path(self.path).write_text(json.dumps(rows))
+        legacy = self.store.list()[0]
+        self.assertTrue(legacy['key_active'])
+        self.assertFalse(legacy['key_revealable'])
+        before = dict(self.store.get(uid))
+        revoked = self.store.revoke(uid)
+        self.assertFalse(revoked['key_active'])
+        self.assertEqual(revoked['key_version'], before['key_version'] + 1)
+        reopened = UserStore(self.path)
+        self.assertFalse(reopened.list()[0]['key_active'])
+        self.assertIsNone(reopened.authenticate(raw))
+        restored, new = reopened.rotate(uid)
+        self.assertTrue(restored['key_active'])
+        self.assertEqual(restored['id'], uid)
+        for field in ['limits', 'owner_data', 'created_at', 'label']:
+            self.assertEqual(restored[field], before[field])
+        self.assertEqual(reopened.authenticate(new)['id'], uid)
+        self.assertEqual(len(reopened.list()), 1)
+        for secret in ['key_hash', 'key_ciphertext']:
+            self.assertNotIn(secret, restored)
+
     def test_ciphertext_tamper_swap_and_wrong_key_fail_closed(self):
         a, _ = self.store.create('A')
         b, _ = self.store.create('B')

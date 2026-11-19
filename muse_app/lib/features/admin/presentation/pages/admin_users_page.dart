@@ -72,6 +72,7 @@ class AdminUsersPage extends StatefulWidget {
 class _AdminUsersPageState extends State<AdminUsersPage>
     with WidgetsBindingObserver {
   final _label = TextEditingController();
+  bool _showRevoked = false;
   late final AdminUsersCubit _cubit;
   @override
   void initState() {
@@ -85,6 +86,7 @@ class _AdminUsersPageState extends State<AdminUsersPage>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.connection != widget.connection) {
       _label.clear();
+      _showRevoked = false;
       _cubit.connect(widget.connection);
     }
   }
@@ -110,7 +112,7 @@ class _AdminUsersPageState extends State<AdminUsersPage>
         builder: (context) => AlertDialog(
           title: Text(
             action == 'rotate'
-                ? 'Đổi API key?'
+                ? (user.keyActive ? 'Đổi API key?' : 'Cấp lại API key?')
                 : action == 'disable'
                 ? 'Tắt người dùng?'
                 : 'Thu hồi API key?',
@@ -118,6 +120,8 @@ class _AdminUsersPageState extends State<AdminUsersPage>
           content: Text(
             action == 'disable'
                 ? 'Các yêu cầu của ${user.label} sẽ bị từ chối cho đến khi bật lại.'
+                : action == 'rotate' && !user.keyActive
+                ? 'Cấp key mới và bật lại ${user.label}. Giữ nguyên user ID, tài khoản, tác vụ và dữ liệu.'
                 : 'Key hiện tại của ${user.label} sẽ mất hiệu lực. Không thể hoàn tác.',
           ),
           actions: [
@@ -166,6 +170,9 @@ class _AdminUsersPageState extends State<AdminUsersPage>
       bloc: _cubit,
       builder: (context, state) {
         final busy = state.loading || state.mutating;
+        final users = state.users
+            .where((user) => user.keyActive != _showRevoked)
+            .toList();
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -239,34 +246,73 @@ class _AdminUsersPageState extends State<AdminUsersPage>
                 state.error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
+              TextButton(
+                onPressed: busy ? null : _cubit.load,
+                child: const Text('Thử lại'),
+              ),
             ],
             const SizedBox(height: 24),
-            if (state.users.isEmpty && !state.loading)
-              const Text('Chưa có người dùng nào.'),
-            for (final user in state.users) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Có API key'),
+                  selected: !_showRevoked,
+                  onSelected: busy
+                      ? null
+                      : (_) {
+                          _cubit.dismissKey();
+                          setState(() => _showRevoked = false);
+                        },
+                ),
+                ChoiceChip(
+                  label: const Text('Đã thu hồi'),
+                  selected: _showRevoked,
+                  onSelected: busy
+                      ? null
+                      : (_) {
+                          _cubit.dismissKey();
+                          setState(() => _showRevoked = true);
+                        },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (users.isEmpty && !busy && state.error == null)
+              Text(
+                _showRevoked ? 'Không có key đã thu hồi.' : 'Chưa có API key. Tạo user & key hoặc cấp lại trong Đã thu hồi.',
+              ),
+            for (final user in users) ...[
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(user.label),
                 subtitle: Text(
-                  '${user.id} · ${user.enabled ? 'Đang bật' : 'Đã tắt'}',
+                  '${user.id} · ${!user.keyActive
+                      ? 'Key đã thu hồi'
+                      : user.enabled
+                      ? 'Key đang bật'
+                      : 'Key đã tắt'}',
                 ),
                 trailing: PopupMenuButton<String>(
                   enabled: !busy,
                   tooltip: 'Thao tác với ${user.label}',
                   onSelected: (action) => _action(user, action),
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'rotate',
-                      child: Text('Đổi key'),
-                    ),
                     PopupMenuItem(
-                      value: user.enabled ? 'disable' : 'enable',
-                      child: Text(user.enabled ? 'Tắt' : 'Bật'),
+                      value: 'rotate',
+                      child: Text(user.keyActive ? 'Đổi key' : 'Cấp lại key'),
                     ),
-                    const PopupMenuItem(
-                      value: 'revoke',
-                      child: Text('Thu hồi'),
-                    ),
+                    if (user.keyActive)
+                      PopupMenuItem(
+                        value: user.enabled ? 'disable' : 'enable',
+                        child: Text(user.enabled ? 'Tắt' : 'Bật'),
+                      ),
+                    if (user.keyActive)
+                      const PopupMenuItem(
+                        value: 'revoke',
+                        child: Text('Thu hồi'),
+                      ),
                   ],
                 ),
               ),
@@ -283,7 +329,7 @@ class _AdminUsersPageState extends State<AdminUsersPage>
                     child: const Text('Ẩn key'),
                   ),
                 ),
-              ] else if (user.keyRevealable)
+              ] else if (user.keyActive && user.keyRevealable)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
@@ -292,9 +338,11 @@ class _AdminUsersPageState extends State<AdminUsersPage>
                     label: const Text('Xem key'),
                   ),
                 ),
-              if (!user.keyRevealable)
-                const Text(
-                  'Không thể xem key cũ hoặc đã thu hồi. Chọn Đổi key để tạo key có thể xem lại.',
+              if (!user.keyActive || !user.keyRevealable)
+                Text(
+                  !user.keyActive
+                      ? 'Key đã thu hồi. Dữ liệu được giữ nguyên; cấp lại key cho cùng người dùng.'
+                      : 'Không thể xem key cũ chỉ lưu hash; key vẫn được giữ. Chọn Đổi key nếu cần xem lại.',
                 ),
               const Divider(),
             ],
