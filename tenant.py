@@ -82,8 +82,38 @@ class UserStore:
 
     @staticmethod
     def public(user: dict) -> dict:
-        return {key: value for key, value in user.items()
-                if key not in ("key_hash",)}
+        result = {key: value for key, value in user.items()
+                  if key not in ("key_hash", "key_ciphertext")}
+        result['key_revealable'] = bool(user.get('key_hash') and user.get('key_ciphertext'))
+        return result
+
+    @staticmethod
+    def _seal(user: dict, raw: str) -> str:
+        # Reuse the externally provisioned, owner-protected server key. Domain
+        # separation and record binding prevent cookie/token or row substitution.
+        from protection import AccountCipher
+        payload = json.dumps(['muse2api-user-key-v1', user['id'],
+                              user['key_hash'], raw]).encode()
+        return AccountCipher().cipher.encrypt(payload).decode()
+
+    @shared_transaction
+    def reveal(self, user_id: str) -> str | None:
+        from protection import AccountCipher
+        from cryptography.fernet import InvalidToken
+        user = self.get(user_id)
+        if not user or not user.get('key_hash') or not user.get('key_ciphertext'):
+            return None
+        try:
+            value = json.loads(AccountCipher().cipher.decrypt(user['key_ciphertext'].encode()))
+            domain, owner, digest, raw = value
+            if (domain != 'muse2api-user-key-v1' or owner != user_id
+                    or digest != user['key_hash']
+                    or not hmac.compare_digest(_hash_key(raw), user['key_hash'])):
+                raise ValueError()
+            return raw
+        except (InvalidToken, ValueError, TypeError, KeyError, AttributeError):
+            raise ValueError('API key unavailable; restore matching server key and backup') from None
+
 
     @shared_transaction
     def list(self) -> list[dict]:
@@ -110,6 +140,7 @@ class UserStore:
             "created_at": now,
             "updated_at": now,
         }
+        user['key_ciphertext'] = self._seal(user, raw)
         with _LOCK:
             self.users.append(user)
             _write(self.path, self.users)
@@ -150,7 +181,10 @@ class UserStore:
             user = self.get(user_id)
             if not user:
                 return None
-            user["key_hash"] = _hash_key(raw)
+            updated = dict(user, key_hash=_hash_key(raw))
+            ciphertext = self._seal(updated, raw)
+            user['key_ciphertext'] = ciphertext
+            user["key_hash"] = updated['key_hash']
             user["key_version"] = int(user.get("key_version") or 0) + 1
             user["enabled"] = True
             user["updated_at"] = int(time.time())
@@ -172,6 +206,7 @@ class UserStore:
             user = self.get(user_id)
             if not user:
                 return None
+            user.pop('key_ciphertext', None)
             user["key_hash"] = None
             user["key_version"] = int(user.get("key_version") or 0) + 1
             user["updated_at"] = int(time.time())
