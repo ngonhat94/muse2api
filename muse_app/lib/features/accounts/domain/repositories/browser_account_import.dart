@@ -1,6 +1,12 @@
 import '../../../connection/domain/entities/server_connection.dart';
 
-const approvedBrowserImportOrigin = 'https://muapp-3d6.pages.dev';
+const approvedBrowserImportOrigin = 'https://muse.dntrip.xyz';
+const approvedBrowserImportOrigins = [
+  'https://muapp-3d6.pages.dev',
+  approvedBrowserImportOrigin,
+];
+const approvedBrowserImportOriginsLabel =
+    'https://muse.dntrip.xyz và https://muapp-3d6.pages.dev';
 
 enum BrowserImportCapability {
   supported,
@@ -19,7 +25,7 @@ BrowserImportCapability browserImportCapabilityFor({
   ).hasMatch(userAgent)) {
     return BrowserImportCapability.unsupportedDevice;
   }
-  return origin == approvedBrowserImportOrigin
+  return approvedBrowserImportOrigins.contains(origin)
       ? BrowserImportCapability.supported
       : BrowserImportCapability.unsupportedOrigin;
 }

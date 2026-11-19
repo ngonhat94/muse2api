@@ -28,7 +28,12 @@ def main():
         assert len(names) == len(set(names)), "extension archive contains duplicate entries"
         assert all("\\" not in name for name in names), "ZIP paths must be portable"
         manifest = json.loads(archive.read("muse2api-extension/manifest.json"))
-        assert manifest["version"] == "1.1.0"
+        assert manifest["version"] == "1.1.1"
+        expected_origins = ['https://muapp-3d6.pages.dev', 'https://muse.dntrip.xyz']
+        assert manifest['externally_connectable']['matches'] == [o + '/*' for o in expected_origins]
+        assert all(o + '/*' in manifest['host_permissions'] for o in expected_origins)
+        assert archive.read('muse2api-extension/import_policy.js') == (source_root / 'import_policy.js').read_bytes()
+        assert manifest['key'] == json.loads((source_root / 'manifest.json').read_text())['key']
         assert manifest["name"] == "__MSG_extName__"
         for locale in ("en", "zh_CN"):
             messages = json.loads(archive.read(

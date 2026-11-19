@@ -1,6 +1,6 @@
 // Pure policy: shared by the worker and synthetic tests. No credentials here.
 (function (root) {
-  const origins = Object.freeze(['https://muapp-3d6.pages.dev']);
+  const origins = Object.freeze(['https://muapp-3d6.pages.dev', 'https://muse.dntrip.xyz']);
   function destination(value) {
     if (typeof value !== 'string' || value.length > 2048 || /[\\\s%]/.test(value)) throw Error('invalid_destination');
     const u = new URL(value);

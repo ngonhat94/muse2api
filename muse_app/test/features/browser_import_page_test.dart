@@ -90,7 +90,7 @@ void main() {
         await t.pumpAndSettle();
         if (capability == BrowserImportCapability.supported) {
           expect(
-            find.textContaining('Chưa tìm thấy extension 1.1.0'),
+            find.textContaining('Chưa tìm thấy extension 1.1.1'),
             findsOneWidget,
           );
           expect(bridge.pings, 1);
@@ -104,6 +104,17 @@ void main() {
             ),
             findsOneWidget,
           );
+        }
+        if (capability == BrowserImportCapability.unsupportedOrigin) {
+          final message = t.widget<Text>(
+            find.textContaining('Trang hiện tại chưa được'),
+          );
+          expect(message.data, contains('https://muse.dntrip.xyz'));
+          expect(message.data, contains('https://muapp-3d6.pages.dev'));
+          expect(message.softWrap, isTrue);
+          expect(message.maxLines, isNull);
+          expect(message.overflow, TextOverflow.visible);
+          expect(find.text(approvedBrowserImportOriginsLabel), findsOneWidget);
         }
         expect(bridge.commits, 0);
         final controller = t.state(find.byType(BrowserImportButton));

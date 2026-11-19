@@ -49,13 +49,24 @@ void main() {
   test('capability preserves exact origin policy and detects mobile', () {
     expect(
       browserImportCapabilityFor(
-        origin: approvedBrowserImportOrigin,
+        origin: 'https://muapp-3d6.pages.dev',
+        userAgent: 'Chrome desktop',
+      ),
+      BrowserImportCapability.supported,
+    );
+    expect(
+      browserImportCapabilityFor(
+        origin: 'https://muse.dntrip.xyz',
         userAgent: 'Chrome desktop',
       ),
       BrowserImportCapability.supported,
     );
     for (final origin in [
       'https://preview.pages.dev',
+      'http://muse.dntrip.xyz',
+      'https://preview.muse.dntrip.xyz',
+      'https://muse.dntrip.xyz.evil.example',
+      'https://muse.dntrip.xyz:8443',
       'https://unknown.example',
       'http://muapp-3d6.pages.dev',
       '$approvedBrowserImportOrigin.evil.example',
