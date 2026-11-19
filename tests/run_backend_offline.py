@@ -52,6 +52,7 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
         and mock.read_text() == expected):
      return real_popen(args, *a, **kw)
     if mock.read_text() in (
+        '#!/bin/bash\nif [[ ${!#} == *"cat > "* ]]; then\n printf "%s\\n" "$SSH_TEST_ERROR" >&2\n exit 1\nfi\ncat >/dev/null\n',
         '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\ncat >/dev/null\n',
         '#!/bin/bash\nprintf "%s\\n" "$@" >> "$SSH_MOCK_LOG"\nif [[ ${SSH_MOCK_FAIL:-} == 1 ]]; then\n  for arg in "$@"; do\n    if [[ $arg == */config ]]; then cat "$arg" >&2; fi\n  done\n  exit 255\nfi\ncat >/dev/null\n'):
      return real_popen(args, *a, **kw)

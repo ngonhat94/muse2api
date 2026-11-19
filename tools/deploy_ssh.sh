@@ -42,12 +42,30 @@ else
 fi
 unset VPS_SSH_KEY VPS_KNOWN_HOSTS
 run_ssh() {
-  local status=0 line
+  local status=0 line category=unclassified
   ssh "${options[@]}" "$target" "$@" 2> "$keydir/stderr" || status=$?
   # Neither SSH nor arbitrary remote stderr is safe to publish. Only recognize
   # our fixed remote command-stage diagnostics; never echo the original line.
   if (( status != 0 )); then
     while IFS= read -r line || [[ -n $line ]]; do
+      # Classify only; paths, usernames, tokens and arbitrary messages stay private.
+      # A category is evidence for investigation, not a root-cause assertion.
+      if [[ $category == unclassified ]]; then
+        case "$line" in
+          *'Permission denied'*) category=permission-denied ;;
+          *'No such file or directory'*) category=missing-path ;;
+          *'No space left on device'*) category=disk-full ;;
+          *'Disk quota exceeded'*) category=quota-exceeded ;;
+          *'File too large'*) category=file-too-large ;;
+          *'Illegal option'*|*'invalid option'*) category=shell-option ;;
+          *'cannot overwrite existing file'*|*'File exists'*) category=target-exists ;;
+          *'Read-only file system'*) category=read-only-filesystem ;;
+          *'Connection reset'*) category=connection-reset ;;
+          *'Broken pipe'*) category=broken-pipe ;;
+          *'Connection timed out'*|*'Operation timed out'*) category=connection-timeout ;;
+          *'Host key verification failed'*|*'REMOTE HOST IDENTIFICATION HAS CHANGED'*) category=host-key ;;
+        esac
+      fi
       for stage in image-load image-inspect docker-query legacy-restart-policy legacy-stop compose-stop compose-up; do
         case "$line" in
           "Deployment failed: $stage: timed out after 180s;"*)
@@ -57,7 +75,7 @@ run_ssh() {
         esac
       done
     done < "$keydir/stderr"
-    printf 'SSH stage %s failed (exit %s); stderr [REDACTED]. Check pinned SSH access and remote state privately.\n' "${ssh_stage:-unknown}" "$status" >&2
+    printf 'SSH stage %s failed (exit %s); category=%s; stderr [REDACTED]. Check pinned SSH access and remote state privately.\n' "${ssh_stage:-unknown}" "$status" "$category" >&2
   fi
   return "$status"
 }
