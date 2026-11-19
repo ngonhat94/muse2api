@@ -31,6 +31,7 @@ CASES = tuple((name, args) for name, args in (
     ('test_auth_cors.py', ()),
     ('test_deploy.py', ()),
     ('test_transport_probe.py', ()),
+    ('test_deploy_retention.py', ()),
     ('test_bootstrap_vps.py', ()),
     ('test_account_proxy.py', ('--offline',)),
     ('test_account_proxy_routing.py', ()),
