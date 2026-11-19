@@ -51,7 +51,12 @@ class FakeUsers implements AdminUsersRepository {
     reads++;
     if (fail) throw Exception('sensitive raw error');
     return [
-      const AdminUser(id: 'fixture-user', label: 'Fixture user', enabled: true),
+      const AdminUser(
+        id: 'fixture-user',
+        label: 'Fixture user',
+        enabled: true,
+        keyRevealable: true,
+      ),
     ];
   }
 
@@ -60,6 +65,10 @@ class FakeUsers implements AdminUsersRepository {
     mutations++;
     return pending?.future ?? Future.value('fixture-one-time-key');
   }
+
+  @override
+  Future<String> reveal(ServerConnection connection, String id) async =>
+      'fixture-existing-key';
 
   @override
   Future<String> rotate(ServerConnection connection, String id) =>

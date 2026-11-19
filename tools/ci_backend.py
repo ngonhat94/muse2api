@@ -52,6 +52,7 @@ CASES = tuple((name, args) for name, args in (
     ('test_media_boundary.py', ()),
     ('test_media_delete.py', ()),
     ('test_multitenant_security.py', ()),
+    ('test_user_key_reveal.py', ()),
     ('test_operational_dashboard.py', ()),
     ('test_operations.py', ()),
     ('test_protection_review_fixes.py', ()),

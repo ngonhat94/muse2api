@@ -11,6 +11,8 @@ class AdminUsersState {
     this.mutating = false,
     this.error,
     this.oneTimeKey,
+    this.revealedKey,
+    this.revealedUserId,
   });
   final List<AdminUser> users;
   final bool loading;
@@ -18,6 +20,8 @@ class AdminUsersState {
   final String? error;
   // Memory only. Never serialize or send this state to logging/storage.
   final String? oneTimeKey;
+  final String? revealedKey;
+  final String? revealedUserId;
 }
 
 class AdminUsersCubit extends Cubit<AdminUsersState> {
@@ -25,9 +29,13 @@ class AdminUsersCubit extends Cubit<AdminUsersState> {
   final AdminUsersRepository repository;
   ServerConnection? _connection;
   int _generation = 0;
+  int _revealGeneration = 0;
+  bool _revealing = false;
 
   void connect(ServerConnection? connection) {
     _generation++;
+    _revealGeneration++;
+    _revealing = false;
     _connection = connection;
     emit(const AdminUsersState());
     if (canManageUsers(connection)) load();
@@ -73,6 +81,38 @@ class AdminUsersCubit extends Cubit<AdminUsersState> {
     }
   }
 
+  Future<void> reveal(AdminUser user) async {
+    final connection = _connection;
+    if (!canManageUsers(connection) || state.mutating || state.loading) return;
+    final generation = _generation;
+    final revealGeneration = ++_revealGeneration;
+    _revealing = true;
+    emit(AdminUsersState(users: state.users, mutating: true));
+    try {
+      final key = await repository.reveal(connection!, user.id);
+      if (_current(generation) && revealGeneration == _revealGeneration) {
+        _revealing = false;
+        emit(
+          AdminUsersState(
+            users: state.users,
+            revealedUserId: user.id,
+            revealedKey: key,
+          ),
+        );
+      }
+    } catch (_) {
+      if (_current(generation) && revealGeneration == _revealGeneration) {
+        _revealing = false;
+        emit(
+          AdminUsersState(
+            users: state.users,
+            error: 'Không thể xem key. Key cũ cần đổi key; nếu đã mã hóa, kiểm tra kết nối và khóa mã hóa server.',
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> create(String label) async {
     if (label.trim().isEmpty) {
       emit(AdminUsersState(users: state.users, error: 'Nhập tên người dùng.'));
@@ -98,12 +138,17 @@ class AdminUsersCubit extends Cubit<AdminUsersState> {
     final connection = _connection;
     if (!canManageUsers(connection) || state.mutating || state.loading) return;
     final generation = _generation;
+    final secretGeneration = _revealGeneration;
     emit(AdminUsersState(users: state.users, mutating: true));
     try {
       final key = await operation(connection!);
       if (!_current(generation)) return;
       emit(
-        AdminUsersState(users: state.users, mutating: true, oneTimeKey: key),
+        AdminUsersState(
+          users: state.users,
+          mutating: true,
+          oneTimeKey: secretGeneration == _revealGeneration ? key : null,
+        ),
       );
       await load();
       if (_current(generation)) {
@@ -130,14 +175,19 @@ class AdminUsersCubit extends Cubit<AdminUsersState> {
     }
   }
 
-  void dismissKey() => emit(
-    AdminUsersState(
-      users: state.users,
-      loading: state.loading,
-      mutating: state.mutating,
-      error: state.error,
-    ),
-  );
+  void dismissKey() {
+    _revealGeneration++;
+    final wasRevealing = _revealing;
+    _revealing = false;
+    emit(
+      AdminUsersState(
+        users: state.users,
+        loading: state.loading,
+        mutating: wasRevealing ? false : state.mutating,
+        error: state.error,
+      ),
+    );
+  }
 
   @override
   Future<void> close() {

@@ -1879,8 +1879,9 @@ def create_user(req: UserCreate, _=Depends(admin_auth)):
         user, raw = users.create(req.label)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"user": user, "api_key": raw,
-            "message": "请立即保存此密钥；关闭后无法再次查看"}
+    return JSONResponse({'user': user, 'api_key': raw,
+                         'message': 'API key created; administrators may explicitly reveal it later'},
+                        status_code=201, headers={'Cache-Control': 'no-store'})
 
 
 @app.patch("/admin/users/{user_id}")
@@ -1900,8 +1901,25 @@ def rotate_user_key(user_id: str, _=Depends(admin_auth)):
     if not result:
         raise HTTPException(404, "用户不存在")
     user, raw = result
-    return {"user": user, "api_key": raw,
-            "message": "旧密钥和旧媒体凭证已失效；请立即保存新密钥"}
+    return JSONResponse({'user': user, 'api_key': raw,
+                         'message': 'Previous key and media credentials invalidated'},
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.post("/admin/users/{user_id}/key/reveal")
+def reveal_user_key(user_id: str, _=Depends(admin_auth)):
+    headers = {'Cache-Control': 'no-store', 'Pragma': 'no-cache'}
+    if not users.get(user_id):
+        return JSONResponse({'detail': 'Unknown user'}, status_code=404, headers=headers)
+    try:
+        raw = users.reveal(user_id)
+    except (ValueError, OSError):
+        return JSONResponse({'detail': 'API key unavailable; restore matching server encryption key and backup'},
+                            status_code=503, headers=headers)
+    if raw is None:
+        return JSONResponse({'detail': 'API key unavailable; rotate the key to enable viewing'},
+                            status_code=409, headers=headers)
+    return JSONResponse({'api_key': raw}, headers=headers)
 
 
 @app.delete("/admin/users/{user_id}/key")

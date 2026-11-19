@@ -18,9 +18,10 @@ sys.path.insert(0, str(ROOT))
 
 
 class Response:
-    def __init__(self, status: int, body: bytes):
+    def __init__(self, status: int, body: bytes, headers=None):
         self.status_code = status
         self.body = body
+        self.headers = dict(headers or [])
 
     def json(self):
         return json.loads(self.body) if self.body else {}
@@ -63,7 +64,8 @@ class Client:
         await self.app(scope, receive, send)
         status = next(m["status"] for m in messages if m["type"] == "http.response.start")
         content = b"".join(m.get("body", b"") for m in messages)
-        return Response(status, content)
+        response_headers = next(m['headers'] for m in messages if m['type'] == 'http.response.start')
+        return Response(status, content, response_headers)
 
 
 async def main():
@@ -98,6 +100,20 @@ async def main():
         assert key_b not in Path(module.CFG.users_file).read_text()
 
         a, b = Client(module.app, key_a), Client(module.app, key_b)
+        reveal_path = f"/admin/users/{user_a['id']}/key/reveal"
+        revealed = await admin.request('POST', reveal_path)
+        assert revealed.status_code == 200 and revealed.json()['api_key'] == key_a
+        assert revealed.headers[b'cache-control'] == b'no-store'
+        assert (await admin.request('POST', '/admin/users/missing/key/reveal')).status_code == 404
+        rows = json.loads(Path(module.CFG.users_file).read_text())
+        rows[1].pop('key_ciphertext')
+        Path(module.CFG.users_file).write_text(json.dumps(rows))
+        legacy = await admin.request('POST', f"/admin/users/{user_b['id']}/key/reveal")
+        assert legacy.status_code == 409 and 'rotate' in legacy.json()['detail']
+        for client in (a, b, Client(module.app, 'unknown')):
+            assert (await client.request('POST', reveal_path)).status_code in (401, 403)
+        listed = await admin.request('GET', '/admin/users')
+        assert key_a not in listed.body.decode() and 'key_ciphertext' not in listed.body.decode()
         assert (await a.request("GET", "/v1/me")).json()["role"] == "user"
         assert (await admin.request("GET", "/v1/me")).json()["role"] == "admin"
         assert "browser_running" not in (await a.request("GET", "/readyz")).json()
@@ -180,12 +196,15 @@ async def main():
         assert rotated_b.status_code == 200
         new_key_b = rotated_b.json()["api_key"]
         assert new_key_b not in Path(module.CFG.users_file).read_text()
+        assert (await admin.request('POST', f"/admin/users/{user_b['id']}/key/reveal")).json()['api_key'] == new_key_b
         assert (await b.request("GET", "/v1/me")).status_code == 401
         assert (await Client(module.app, new_key_b).request("GET", "/v1/me")).status_code == 200
 
         assert (await admin.request("DELETE", f"/admin/users/{user_a['id']}/key")).status_code == 200
         assert (await a.request("GET", "/v1/me")).status_code == 401
         assert (await Client(module.app, "unused").request("GET", protected_url)).status_code == 401
+
+        assert (await admin.request('POST', reveal_path)).status_code == 409
 
         # Legacy records migrate once to the legacy admin, never to a newly created tenant.
         assert all(x.get("owner_id") for x in module.store.accounts)

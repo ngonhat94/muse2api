@@ -37,6 +37,7 @@ class AdminUsersRepositoryImpl implements AdminUsersRepository {
             id: user['id'] as String,
             label: user['label'] as String,
             enabled: user['enabled'] == true,
+            keyRevealable: user['key_revealable'] == true,
           ),
         )
         .toList();
@@ -52,6 +53,14 @@ class AdminUsersRepositoryImpl implements AdminUsersRepository {
         method: 'POST',
         body: {'label': label},
       ),
+    );
+  }
+
+  @override
+  Future<String> reveal(ServerConnection connection, String id) async {
+    _authorize(connection);
+    return _key(
+      await api.request(connection, '${_path(id)}/key/reveal', method: 'POST'),
     );
   }
 

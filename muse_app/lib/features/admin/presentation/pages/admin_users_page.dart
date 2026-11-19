@@ -69,12 +69,14 @@ class AdminUsersPage extends StatefulWidget {
   State<AdminUsersPage> createState() => _AdminUsersPageState();
 }
 
-class _AdminUsersPageState extends State<AdminUsersPage> {
+class _AdminUsersPageState extends State<AdminUsersPage>
+    with WidgetsBindingObserver {
   final _label = TextEditingController();
   late final AdminUsersCubit _cubit;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _cubit = AdminUsersCubit(widget.repository)..connect(widget.connection);
   }
 
@@ -88,7 +90,13 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _cubit.dismissKey();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cubit.close();
     _label.dispose();
     super.dispose();
@@ -178,7 +186,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'API key mới chỉ hiển thị một lần. Hãy lưu ngay khi tạo hoặc đổi key.',
+              'Chọn Xem key để xem và sao chép. Key cũ chỉ lưu hash cần đổi key trước.',
             ),
             const SizedBox(height: 24),
             TextField(
@@ -208,7 +216,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('LƯU KEY NGAY — chỉ hiển thị lần này:'),
+                      const Text(
+                        'API key mới — chỉ chia sẻ với người dùng này:',
+                      ),
                       const SizedBox(height: 8),
                       _OneTimeApiKey(
                         key: ObjectKey(widget.connection),
@@ -260,6 +270,32 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   ],
                 ),
               ),
+              if (state.revealedUserId == user.id &&
+                  state.revealedKey != null) ...[
+                _OneTimeApiKey(
+                  key: ObjectKey(widget.connection),
+                  apiKey: state.revealedKey!,
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _cubit.dismissKey,
+                    child: const Text('Ẩn key'),
+                  ),
+                ),
+              ] else if (user.keyRevealable)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: busy ? null : () => _cubit.reveal(user),
+                    icon: const Icon(Icons.visibility_outlined),
+                    label: const Text('Xem key'),
+                  ),
+                ),
+              if (!user.keyRevealable)
+                const Text(
+                  'Không thể xem key cũ hoặc đã thu hồi. Chọn Đổi key để tạo key có thể xem lại.',
+                ),
               const Divider(),
             ],
           ],
