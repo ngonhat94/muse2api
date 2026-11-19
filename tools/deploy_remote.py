@@ -66,6 +66,135 @@ def prepare(root):
         raise ValueError('explicit runtime credentials required')
 
 
+UPLOAD_FILES = {'.retention-owner', '.lease', 'image.tar', 'compose.yml', 'deploy_remote.py'}
+STALE_SECONDS = 24 * 60 * 60
+
+
+def cleanup_upload(root, attempt, stale=False):
+    """Only our marked, private flat upload directories; never recurse/follow links."""
+    if not re.fullmatch('[a-f0-9]{40}-[a-f0-9]{32}', attempt):
+        return False
+    release = root / 'incoming' / attempt
+    try:
+        if any(p.is_symlink() for p in (root, *root.parents)):
+            return False
+        private(root / 'incoming', directory=True)
+        private(release, directory=True)
+        entries = list(release.iterdir())
+        if {p.name for p in entries} - UPLOAD_FILES:
+            return False
+        for path in entries:
+            private(path)
+            if path.stat().st_nlink != 1:
+                return False
+        marker = release / '.retention-owner'
+        if marker.read_text() != CONTRACT:
+            return False
+        with (release / '.lease').open('r+') as lease:
+            try:
+                fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            if stale and time.time() - os.fstat(lease.fileno()).st_mtime < STALE_SECONDS:
+                return False
+            for path in entries:
+                path.unlink()
+            release.rmdir()
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def prune_images(protected):
+    """Explicit non-forced removal; preserve images referenced by ANY container."""
+    candidates = run('docker', 'image', 'ls', '--all', '--quiet', '--no-trunc',
+                     '--filter', 'label=org.muse2api.storage-contract=' + CONTRACT).splitlines()
+    for image_id in sorted(set(candidates)):
+        if image_id in protected or not re.fullmatch('sha256:[a-f0-9]{64}', image_id):
+            continue
+        image = json.loads(run('docker', 'image', 'inspect', image_id))[0]
+        labels = image['Config'].get('Labels') or {}
+        tags = image.get('RepoTags') or []
+        if (labels.get('org.muse2api.storage-contract') != CONTRACT
+                or not re.fullmatch('[a-f0-9]{40}', labels.get('org.opencontainers.image.revision', ''))
+                or any(not tag.startswith('muse2api-ci:') for tag in tags)
+                or image['Id'] != image_id):
+            continue
+        containers = run('docker', 'ps', '--all', '--quiet', '--no-trunc').splitlines()
+        used = {json.loads(run('docker', 'inspect', container))[0]['Image'] for container in containers}
+        if image_id not in used:
+            try:
+                # No --force: Docker is the final race guard for new containers.
+                run('docker', 'image', 'rm', image_id, stage='image-retention')
+            except DeploymentError:
+                print('Image retention deferred; image may now be in use. Inspect privately.', flush=True)
+
+
+def disk_preflight(root, archive_bytes):
+    """Conservative tar + load headroom; containerd may live outside DockerRootDir."""
+    docker_root = Path(run('docker', 'info', '--format', '{{.DockerRootDir}}'))
+    targets = [root, docker_root, Path('/var/lib/containerd')]
+    required = {}
+    paths = {}
+    margin = 512 * 1024 * 1024
+    for path, amount in zip(targets, [archive_bytes + margin, 3 * archive_bytes + margin,
+                                       3 * archive_bytes + margin]):
+        if not path.exists():
+            continue
+        device = path.stat().st_dev
+        required[device] = required.get(device, 0) + amount
+        paths[device] = path
+    for device, amount in required.items():
+        free = os.statvfs(paths[device])
+        available = free.f_bavail * free.f_frsize
+        if available < amount:
+            raise DeploymentError('disk-preflight: required ' + str(amount) + ' bytes; available '
+                                  + str(available) + ' bytes; approved scoped initial cleanup required; no upload started')
+
+
+def receive(root, revision, image_id, version, sizes, attempt):
+    """One SSH session owns the upload lease from allocation through final cleanup."""
+    if (not re.fullmatch('[a-f0-9]{40}', revision)
+            or not re.fullmatch(revision + '-[a-f0-9]{32}', attempt)
+            or len(sizes) != 3 or any(n < 0 for n in sizes)):
+        raise ValueError('invalid upload session')
+    prepare(root)
+    fd = os.open(root / '.upload.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'r+') as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_nlink != 1:
+            raise ValueError('unsafe upload lock')
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        prepare(root)
+        legacy_guard(root)
+        for entry in (root / 'incoming').iterdir():
+            cleanup_upload(root, entry.name, stale=True)
+        disk_preflight(root, sizes[0])
+        release = root / 'incoming' / attempt
+        release.mkdir(mode=0o700)  # No reuse or clobber, even on retry.
+        try:
+            for name, content in (('.retention-owner', CONTRACT), ('.lease', '')):
+                fd = os.open(release / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(fd, 'w') as stream:
+                    stream.write(content)
+            with (release / '.lease').open('r+') as lease:
+                fcntl.flock(lease, fcntl.LOCK_EX)
+                for name, size in zip(('image.tar', 'compose.yml', 'deploy_remote.py'), sizes):
+                    fd = os.open(release / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                    with os.fdopen(fd, 'wb') as stream:
+                        remaining = size
+                        while remaining:
+                            block = sys.stdin.buffer.read(min(1024 * 1024, remaining))
+                            if not block:
+                                raise ValueError('incomplete upload')
+                            stream.write(block)
+                            remaining -= len(block)
+                deploy(root, revision, image_id, version, attempt)
+        finally:
+            if not cleanup_upload(root, attempt):
+                print('Upload retention deferred; inspect owned upload privately.', flush=True)
+
+
 def legacy_guard(root):
     legacy = run('docker', 'ps', '-aq', '--no-trunc', '--filter', 'name=^/muse2api$')
     if legacy:
@@ -179,14 +308,19 @@ def deploy(root, revision, image_id, version, attempt=None):
                 print('Previous image recovered; release FAILED. Data was not rolled back.', flush=True)
             detail = str(failure) if isinstance(failure, DeploymentError) else 'health/version verification failed'
             raise DeploymentError(detail + '; release FAILED; no data restored') from None
+        prune_images({image_id})
         print('Verified running image ' + image_id + ' revision ' + revision, flush=True)
 
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) not in (5, 6):
-            raise ValueError('expected path, revision, image ID, version, optional attempt')
-        deploy(Path(sys.argv[1]), *sys.argv[2:])
+        if len(sys.argv) == 8 and sys.argv[1] == '--receive':
+            receive(Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5],
+                    [int(n) for n in sys.argv[6].split(',')], sys.argv[7])
+        elif len(sys.argv) in (5, 6):
+            deploy(Path(sys.argv[1]), *sys.argv[2:])
+        else:
+            raise ValueError('invalid deployment arguments')
     except Exception as error:
         # Subprocess stderr may contain configuration; never print it to CI.
         message = str(error) if isinstance(error, DeploymentError) else type(error).__name__ + '; inspect VPS privately'

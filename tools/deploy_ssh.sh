@@ -47,6 +47,13 @@ run_ssh() {
   # Neither SSH nor arbitrary remote stderr is safe to publish. Only recognize
   # our fixed remote command-stage diagnostics; never echo the original line.
   if (( status != 0 )); then
+    # Only this numeric, fixed-format diagnostic is safe to forward.
+    while IFS= read -r line; do
+      if [[ $line =~ ^Deployment\ failed:\ disk-preflight:\ required\ [0-9]+\ bytes\;\ available\ [0-9]+\ bytes\; ]]; then
+        read -r _ _ _ _ required _ _ available _ <<< "$line"
+        printf 'Disk preflight: required %s bytes; available %s bytes. Approved scoped initial cleanup required; no upload started.\n' "$required" "$available" >&2
+      fi
+    done < "$keydir/stderr"
     while IFS= read -r line || [[ -n $line ]]; do
       # Classify only; paths, usernames, tokens and arbitrary messages stay private.
       # A category is evidence for investigation, not a root-cause assertion.
@@ -82,17 +89,10 @@ run_ssh() {
 # Preflight does not create directories or run Docker. The operator owns bootstrap.
 ssh_stage=preflight
 run_ssh "python3 - '$root'" < tools/deploy_preflight.py
-# Independent attempts: --pull may produce a different image for the same SHA.
-# Never reuse, remove or overwrite an interrupted or previously deployed upload.
+# A single remote process owns allocation, upload, deploy and finally cleanup.
+# Embed only public source in argv; binary artifacts travel via stdin.
 attempt="$revision-$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
-ssh_stage=allocate-upload
-run_ssh "umask 077; mkdir '$root/incoming/$attempt'"
-# Stream fixed filenames through stdin: no scp/rsync remote quoting ambiguity.
-for pair in 'deploy-image.tar:image.tar' 'deploy/compose.production.yml:compose.yml' 'tools/deploy_remote.py:deploy_remote.py'; do
-  local_file=${pair%%:*}
-  remote_file=${pair#*:}
-  ssh_stage="upload-$remote_file"
-  run_ssh "umask 077; set -C; cat > '$root/incoming/$attempt/$remote_file'" < "$local_file"
-done
-ssh_stage=remote-deploy
-run_ssh "python3 '$root/incoming/$attempt/deploy_remote.py' '$root' '$revision' '$image_id' '$version' '$attempt'"
+source64=$(python3 -c 'import base64; print(base64.b64encode(open("tools/deploy_remote.py","rb").read()).decode())')
+sizes=$(python3 -c 'import os; print(",".join(str(os.path.getsize(p)) for p in ("deploy-image.tar","deploy/compose.production.yml","tools/deploy_remote.py")))')
+ssh_stage=upload-deploy
+cat deploy-image.tar deploy/compose.production.yml tools/deploy_remote.py | run_ssh "python3 -c \"import base64; exec(compile(base64.b64decode('$source64'), '<deploy>', 'exec'))\" --receive '$root' '$revision' '$image_id' '$version' '$sizes' '$attempt'"

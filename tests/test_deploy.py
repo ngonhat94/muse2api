@@ -280,11 +280,11 @@ class DeployTests(unittest.TestCase):
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             log = (tmp / 'commands').read_text()
-            self.assertEqual(log.count('StrictHostKeyChecking=yes'), 6)
+            self.assertEqual(log.count('StrictHostKeyChecking=yes'), 2)
             self.assertIn('GlobalKnownHostsFile=/dev/null', log)
             self.assertNotIn('StrictHostKeyChecking=no', log)
             self.assertNotIn('ssh-keyscan', log)
-            self.assertRegex(log, '/incoming/'+'a'*40+'-[a-f0-9]{32}/image.tar')
+            self.assertRegex(log, 'a'*40+'-[a-f0-9]{32}')
             self.assertFalse(list(tmp.glob('muse-deploy-*')))
 
     def token_transport(self, **changes):
@@ -315,83 +315,38 @@ class DeployTests(unittest.TestCase):
             return result, log
 
     def test_real_upload_retries_preserve_interrupted_and_existing_releases(self):
-        with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP')) as directory:
-            tmp = Path(directory).resolve()
-            remote = tmp / 'remote'
-            incoming = remote / 'incoming'
-            incoming.mkdir(parents=True)
-            original = incoming / ('a'*40)
-            original.mkdir()
-            (original / 'image.tar').write_bytes(b'original-release')
-            stub = tmp / 'ssh'
-            stub.write_text(UPLOAD_SSH_STUB)
-            stub.chmod(0o700)
-            work = tmp / 'work'
-            (work / 'tools').mkdir(parents=True)
-            (work / 'deploy').mkdir()
-            for name in ('tools/deploy_preflight.py', 'tools/deploy_remote.py',
-                         'deploy/compose.production.yml', 'deploy-image.tar'):
-                (work / name).write_text('synthetic')
-            env = dict(os.environ, VPS_DEPLOY_PATH='/data/home/muse2api-production',
-                       VPS_HOST='example.invalid', VPS_PORT='22', VPS_USER='user', VPS_SSH_MODE='key',
-                       VPS_KNOWN_HOSTS='synthetic', VPS_SSH_KEY='synthetic', RUNNER_TEMP=str(tmp),
-                       SSH_UPLOAD_ROOT=str(remote), SSH_PARTIAL='1', PATH=str(tmp)+os.pathsep+os.environ['PATH'])
-            args = ['bash', str(ROOT/'tools/deploy_ssh.sh'), 'a'*40, 'sha256:'+'b'*64, '1.6.10']
-            failed = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
-            self.assertEqual(failed.returncode, 23, failed.stderr)
-            self.assertIn('upload-image.tar', failed.stderr)
-            partial = next(p for p in incoming.iterdir() if p != original)
-            self.assertEqual((partial / 'image.tar').read_bytes(), b'partial-upload')
-            env['SSH_PARTIAL'] = '0'
-            for image in ('b', 'c'):
-                args[3] = 'sha256:' + image*64
-                result = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(len(list(incoming.iterdir())), 4)
-            self.assertEqual((partial / 'image.tar').read_bytes(), b'partial-upload')
-            self.assertEqual((original / 'image.tar').read_bytes(), b'original-release')
-            protected = remote / 'protected'
-            protected.write_bytes(b'preserved')
-            for race in ('file', 'symlink'):
-                env['SSH_RACE'] = race
-                result = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
-                self.assertNotEqual(result.returncode, 0, 'must refuse competing upload target')
-                self.assertEqual(protected.read_bytes(), b'preserved')
-            archives = [p / 'image.tar' for p in incoming.iterdir()]
-            self.assertEqual(sum(p.is_symlink() for p in archives), 1)
-            self.assertTrue(any(p.read_bytes() == b'competing-partial' for p in archives))
-            env.pop('SSH_RACE')
-            env['SSH_REMOTE_FAIL'] = '1'
-            result = subprocess.run(args, env=env, cwd=work, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 1)
-            self.assertIn('image-load timed out after 180s', result.stderr)
-            self.assertNotIn('secret', result.stdout + result.stderr)
-            self.assertFalse(list(tmp.glob('muse-deploy-*')))
+        # Receiver's filesystem/partial-stream regression lives in test_deploy_retention.
+        # Transport sends one byte-framed session, never shell-created upload paths.
+        result, log = self.token_transport()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--receive', log)
+        self.assertNotIn('cat >', log)
+        self.assertNotIn('mkdir ', log)
 
     def test_repeated_transport_uses_distinct_no_clobber_attempts(self):
         first, log1 = self.token_transport()
         second, log2 = self.token_transport()
         self.assertEqual(first.returncode, 0, first.stderr)
         self.assertEqual(second.returncode, 0, second.stderr)
-        mkdir1 = next(line for line in log1.splitlines() if 'mkdir ' in line)
-        mkdir2 = next(line for line in log2.splitlines() if 'mkdir ' in line)
+        mkdir1 = next(line for line in log1.splitlines() if '--receive' in line)
+        mkdir2 = next(line for line in log2.splitlines() if '--receive' in line)
         self.assertNotEqual(mkdir1, mkdir2, 'reruns must not reuse immutable SHA directory')
         for log in (log1, log2):
-            self.assertEqual(log.count('set -C;'), 3, 'all streamed files must use noclobber')
+            self.assertIn('--receive', log)
             self.assertNotIn('rm ', log)
 
     def test_token_mode_without_key_pins_gateway_and_never_offers_client_keys(self):
         result, log = self.token_transport()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(log.count('StrictHostKeyChecking=yes'), 6)
-        self.assertEqual(log.count('GlobalKnownHostsFile=/dev/null'), 6)
+        self.assertEqual(log.count('StrictHostKeyChecking=yes'), 2)
+        self.assertEqual(log.count('GlobalKnownHostsFile=/dev/null'), 2)
         self.assertNotIn('StrictHostKeyChecking=no', log)
         self.assertNotIn('ssh-keyscan', log)
         self.assertIn('VPS_SSH_MODE: ${{ vars.VPS_SSH_MODE }}',
                       (ROOT / '.github/workflows/ci.yml').read_text())
         for option in ('BatchMode=yes', 'PubkeyAuthentication=no',
                        'PasswordAuthentication=no', 'KbdInteractiveAuthentication=no'):
-            self.assertEqual(log.count(option), 6)
+            self.assertEqual(log.count(option), 2)
         self.assertNotIn('IdentitiesOnly', log)
         self.assertNotIn('\n-i\n', log)
         self.assertNotIn('ibssh_abcdefghijklmnopqrstuvwxyz', log)
@@ -399,6 +354,7 @@ class DeployTests(unittest.TestCase):
     def test_ssh_failure_categories_never_publish_raw_stderr(self):
         # Exercise the real wrapper while replacing only the SSH executable.
         for message, category in (
+            ('Deployment failed: disk-preflight: required 123 bytes; available 45 bytes; private-secret', 'unclassified'),
             ('cat: /private/secret: Permission denied', 'permission-denied'),
             ('cat: /private/secret: No such file or directory', 'missing-path'),
             ('cat: write error: No space left on device', 'disk-full'),
@@ -413,7 +369,7 @@ class DeployTests(unittest.TestCase):
                 original = Path.write_text
                 def write(path, text, *args, **kwargs):
                     if path.name == 'ssh':
-                        text = '#!/bin/bash\nif [[ ${!#} == *"cat > "* ]]; then\n printf "%s\\n" "$SSH_TEST_ERROR" >&2\n exit 1\nfi\ncat >/dev/null\n'
+                        text = '#!/bin/bash\nif [[ ${!#} == *"--receive"* ]]; then\n printf "%s\\n" "$SSH_TEST_ERROR" >&2\n exit 1\nfi\ncat >/dev/null\n'
                     return original(path, text, *args, **kwargs)
                 with patch.object(Path, 'write_text', write):
                     result, _ = self.token_transport(SSH_TEST_ERROR=message)
@@ -421,6 +377,9 @@ class DeployTests(unittest.TestCase):
                 self.assertIn('category=' + category, result.stderr)
                 self.assertNotIn(message, result.stdout + result.stderr)
                 self.assertNotIn('/private/', result.stdout + result.stderr)
+                if 'disk-preflight' in message:
+                    self.assertIn('required 123 bytes; available 45 bytes', result.stderr)
+                    self.assertNotIn('private-secret', result.stderr)
 
     def test_token_mode_redacts_ssh_errors_and_preserves_failure_status(self):
         result, log = self.token_transport(SSH_MOCK_FAIL='1')
@@ -491,8 +450,10 @@ class DeployTests(unittest.TestCase):
                 (root / 'ROLLBACK_COMPATIBLE').chmod(0o600)
             def fake(*args, **kwargs):
                 calls.append(list(args))
+                if args[1:3] == ('image', 'ls'):
+                    return old_id
                 if args[1:3] == ('image', 'inspect'):
-                    return json.dumps([{'Id': args[3], 'Config': {'Labels': {
+                    return json.dumps([{'Id': args[3], 'RepoTags': [], 'Config': {'Labels': {
                         'org.opencontainers.image.revision': 'a'*40,
                         'org.muse2api.storage-contract': module.CONTRACT}}}])
                 if args[1] == 'ps':
@@ -528,7 +489,7 @@ class DeployTests(unittest.TestCase):
         start = next(i for i, c in enumerate(calls) if 'up' in c)
         self.assertLess(stop, start)
         self.assertTrue(any(c[1:3] == ['update', '--restart=no'] for c in calls))
-        self.assertFalse(any('rm' in c or 'prune' in c or 'down' in c for c in calls))
+        self.assertFalse(any('prune' in c or 'down' in c or c[1:2] == ['rm'] for c in calls))
 
     def test_explicit_attempt_loads_only_its_archive(self):
         attempt = 'a'*40 + '-' + 'd'*32
@@ -557,12 +518,16 @@ class DeployTests(unittest.TestCase):
         self.assertLess(stop, up)
         self.assertEqual(active, 'sha256:'+'b'*64)
         self.assertTrue(any('exec' in c and 'version.json' in c[-1] for c in calls))
+        removal = next(i for i, c in enumerate(calls) if c[1:3] == ['image', 'rm'])
+        health = max(i for i, c in enumerate(calls) if 'exec' in c)
+        self.assertGreater(removal, health)
 
     def test_failed_health_has_bounded_retry_and_opt_in_image_only_rollback(self):
         calls, active = self.exercise(fail_new=True, rollback=True)
         self.assertEqual(active, 'sha256:'+'c'*64)
         self.assertEqual(sum('exec' in c for c in calls), 31)
         self.assertEqual(sum('up' in c for c in calls), 2)
+        self.assertFalse(any(c[1:3] == ['image', 'rm'] for c in calls))
 
     def test_failure_without_compatibility_approval_stays_stopped(self):
         calls, _ = self.exercise(fail_new=True)
