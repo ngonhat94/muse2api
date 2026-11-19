@@ -223,15 +223,17 @@ runtime. Automatic image-only rollback requires owner-only `ROLLBACK_COMPATIBLE`
 containing `muse2api-storage-v1` AND the prior image's matching storage-contract
 label. Create that approval only after reviewing actual schema compatibility;
 labels alone cannot prove it. Failure remains a failed CI run even after recovery.
-No ledger snapshot restoration, cleanup, pruning, migration or key generation is
-performed by deploy. Legacy rollback is always manual (stop new first, then
+No ledger snapshot restoration, runtime-data cleanup, migration or key generation
+is performed by deploy. Artifact/image retention is scoped as described above. Legacy rollback is always manual (stop new first, then
 restore old restart policy/start if explicitly approved).
 
 Uploads use independent `incoming/<revision>-<random-attempt>` directories, even
 when the same SHA is retried: `docker build --pull` can produce a different image
-ID for that SHA. Directory creation is exclusive and all streamed files use shell
-noclobber; existing files/symlinks fail closed. Interrupted attempts and historical
-revision directories/images remain untouched, not deleted, overwritten or pruned.
+ID for that SHA. Directory creation and receiver file creation are exclusive with
+no-follow/no-clobber flags; existing files/symlinks fail closed. Marked attempts
+are cleaned on success/failure or after the stale lease window; unmarked historical
+revision directories remain untouched. Unused owned images are removed only after
+a successful health check.
 The remote deploy accepts an optional fifth attempt argument; the original four
 arguments still select `incoming/<revision>`. Attempts must belong to the exact
 revision. A private no-follow file lock serializes Docker load/identity checks,
@@ -239,8 +241,7 @@ container replacement, health checks and rollback across independent attempts.
 Image ID, OCI revision and storage-contract validation remain mandatory before
 stopping a runtime; a new attempt is not permission to bypass identity checks.
 
-CI failures now name the transport stage (preflight, allocate-upload, fixed file
-upload or remote-deploy) without publishing raw SSH stderr. Recognized remote
+CI failures now name the transport stage (preflight or upload-deploy) without publishing raw SSH stderr. Recognized remote
 Docker failures name their command stage, including `image-load` and Compose
 stop/up, and distinguish the bounded 180-second timeout. For `image-load`, inspect
 Docker daemon health, disk space and the uploaded archive **privately**; do not
