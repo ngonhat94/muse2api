@@ -41,7 +41,12 @@ class CiBackendTests(unittest.TestCase):
         self.assertIn('  workflow_dispatch:', workflow)
         jobs = [line.strip().removesuffix(':') for line in workflow.split('jobs:\n', 1)[1].splitlines()
                 if line.startswith('  ') and not line.startswith('   ') and line.endswith(':')]
-        self.assertEqual(jobs, ['backend'])
+        self.assertEqual(jobs, ['transport-diagnostic', 'backend'])
+        self.assertIn("github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/deploy-upload-shell'", workflow)
+        diagnostic = workflow.split('  transport-diagnostic:', 1)[1].split('  backend:', 1)[0]
+        self.assertNotIn('deploy_ssh.sh', diagnostic)
+        self.assertNotIn('docker ', diagnostic)
+        self.assertIn('tools/deploy_transport_probe.py', diagnostic)
         self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main'", workflow)
         self.assertIn('cancel-in-progress: false', workflow)
         self.assertIn('bash tools/deploy_ssh.sh', workflow)
