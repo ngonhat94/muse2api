@@ -46,6 +46,7 @@ class MuseApp extends StatelessWidget {
           child: BlocProvider(
             create: (_) => ConnectionBloc(
               dependencies.connectServer,
+              startRestoring: requireKey,
               restore: dependencies.restoreConnection,
               clientConfig: dependencies.clientConfig,
               forget: dependencies.forgetConnection,
