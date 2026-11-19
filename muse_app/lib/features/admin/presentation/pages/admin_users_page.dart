@@ -195,6 +195,12 @@ class _AdminUsersPageState extends State<AdminUsersPage>
             const Text(
               'Chọn Xem key để xem và sao chép. Key cũ chỉ lưu hash cần đổi key trước.',
             ),
+            if (state.users.any((user) => !user.keyActivityKnown)) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Server chưa cung cấp trạng thái thu hồi. Cần cập nhật backend để phân loại key; danh sách vẫn giữ các trạng thái chưa xác định.',
+              ),
+            ],
             const SizedBox(height: 24),
             TextField(
               controller: _label,
@@ -288,7 +294,9 @@ class _AdminUsersPageState extends State<AdminUsersPage>
                 contentPadding: EdgeInsets.zero,
                 title: Text(user.label),
                 subtitle: Text(
-                  '${user.id} · ${!user.keyActive
+                  '${user.id} · ${!user.keyActivityKnown
+                      ? 'Chưa rõ trạng thái key'
+                      : !user.keyActive
                       ? 'Key đã thu hồi'
                       : user.enabled
                       ? 'Key đang bật'
@@ -340,7 +348,9 @@ class _AdminUsersPageState extends State<AdminUsersPage>
                 ),
               if (!user.keyActive || !user.keyRevealable)
                 Text(
-                  !user.keyActive
+                  !user.keyActivityKnown
+                      ? 'Server chưa xác định key còn tồn tại hay đã thu hồi. Không thể xem lại key chỉ lưu hash.'
+                      : !user.keyActive
                       ? 'Key đã thu hồi. Dữ liệu được giữ nguyên; cấp lại key cho cùng người dùng.'
                       : 'Không thể xem key cũ chỉ lưu hash; key vẫn được giữ. Chọn Đổi key nếu cần xem lại.',
                 ),

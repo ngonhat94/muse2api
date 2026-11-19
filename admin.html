@@ -118,6 +118,8 @@
   button:disabled{opacity:.45;cursor:not-allowed}
   button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
   button.ghost:hover{background:rgba(255,255,255,.05);border-color:#37415a}
+  #tab-users [aria-pressed]{min-height:44px}
+  #tab-users [aria-pressed="true"]{background:var(--accent2);border-color:var(--accent2);color:#fff}
   button.danger{background:transparent;border:1px solid rgba(248,113,113,.4);color:var(--bad)}
   button.danger:hover{background:rgba(248,113,113,.12)}
   button.mini{padding:4px 10px;font-size:12px;border-radius:7px}
@@ -412,6 +414,11 @@
     </div>
     <div class="card">
       <h3>用户列表</h3>
+      <div class="row" role="group" aria-label="密钥状态筛选">
+        <button id="userKeysActive" class="ghost" aria-pressed="true" onclick="selectUserKeyView('active')">现有密钥</button>
+        <button id="userKeysRevoked" class="ghost" aria-pressed="false" onclick="selectUserKeyView('revoked')">已撤销</button>
+      </div>
+      <p id="userKeyMetadataWarning" class="hint" role="status" hidden>服务器未提供密钥撤销状态。请更新后端以分类密钥；未知状态的用户仍保留在现有列表中。</p>
       <div class="tblwrap"><table><thead><tr><th>名称</th><th>ID</th><th>状态</th><th>密钥版本</th><th>操作</th></tr></thead>
         <tbody id="usersBody"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table></div>
     </div>
@@ -1879,19 +1886,28 @@ async function previewTenantRetention() {
 }
 /* End tenant limit controls */
 
+let userKeyView = 'active';
+async function selectUserKeyView(view){
+  userKeyView = view === 'revoked' ? 'revoked' : 'active';
+  $('userKeysActive').setAttribute('aria-pressed', String(userKeyView === 'active'));
+  $('userKeysRevoked').setAttribute('aria-pressed', String(userKeyView === 'revoked'));
+  await loadUsers();
+}
 async function loadUsers(){
   if (!CURRENT || CURRENT.role !== 'admin') return;
   try{
     const d = await api('/admin/users');
-    const rows = d.users || [];
+    const users = d.users || [];
+    $('userKeyMetadataWarning').hidden = !users.some(u => typeof u.key_active !== 'boolean');
+    const rows = users.filter(u => userKeyView === 'revoked' ? u.key_active === false : u.key_active !== false);
     $('usersBody').innerHTML = rows.length ? rows.map(u => `<tr>
       <td>${esc(u.label)}</td><td class="mono">${esc(u.id)}</td>
-      <td><span class="badge ${u.enabled ? 'ok' : 'bad'}">${u.enabled ? '启用' : '停用'}</span></td>
+      <td><span class="badge ${u.enabled ? 'ok' : 'bad'}">${u.key_active === false ? '已撤销' : typeof u.key_active !== 'boolean' ? '密钥状态未知' : u.enabled ? '启用' : '停用'}</span></td>
       <td class="mono">${Number(u.key_version || 0)}</td>
-      <td class="acts"><button class="ghost mini" onclick="openTenantLimits('${esc(u.id)}')">存储与限制</button><button class="ghost mini" onclick="rotateTenantKey('${esc(u.id)}')">轮换密钥</button>
-      <button class="ghost mini" onclick="setTenantEnabled('${esc(u.id)}',${!u.enabled})">${u.enabled ? '停用' : '启用'}</button>
-      <button class="danger mini" onclick="revokeTenantKey('${esc(u.id)}')">撤销密钥</button></td></tr>`).join('')
-      : '<tr><td colspan="5" class="empty">尚未创建用户</td></tr>';
+      <td class="acts"><button class="ghost mini" onclick="openTenantLimits('${esc(u.id)}')">存储与限制</button><button class="ghost mini" onclick="rotateTenantKey('${esc(u.id)}')">${u.key_active === false ? '重新签发密钥' : '轮换密钥'}</button>
+      ${u.key_active === false ? '' : `<button class="ghost mini" onclick="setTenantEnabled('${esc(u.id)}',${!u.enabled})">${u.enabled ? '停用' : '启用'}</button>
+      <button class="danger mini" onclick="revokeTenantKey('${esc(u.id)}')">撤销密钥</button>`}</td></tr>`).join('')
+      : `<tr><td colspan="5" class="empty">${userKeyView === 'revoked' ? '没有已撤销的密钥' : '暂无现有密钥；可在已撤销列表中重新签发。'}</td></tr>`;
   }catch(e){ $('usersBody').innerHTML = `<tr><td colspan="5" class="empty">${esc(e.message)}</td></tr>`; }
 }
 
@@ -1922,7 +1938,7 @@ async function setTenantEnabled(id, enabled){
 }
 async function revokeTenantKey(id){
   if (!confirm('撤销后该用户将无法登录，旧媒体链接也会立即失效。继续吗？')) return;
-  try{ await api(`/admin/users/${id}/key`, {method:'DELETE'}); loadUsers(); }
+  try{ await api(`/admin/users/${id}/key`, {method:'DELETE'}); await loadUsers(); }
   catch(e){ toast('撤销失败：' + e.message, 'bad'); }
 }
 
