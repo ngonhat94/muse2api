@@ -2,6 +2,18 @@
 
 Updated at: 2026-11-15 (UTC)
 
+## Upstream integration freshness warning
+
+The v1.6.11 integration changes backend generation, session-cookie rotation,
+version reporting, thumbnail handling and related tests. The stored graph predates
+those changes; verify relationships against current source. Refresh was attempted
+with `graphify update .`, but this Linux checkout has no `graphify` executable;
+the persisted Python interpreter path points to a different macOS environment.
+The existing graph and extraction exclusions are preserved, not regenerated.
+
+Refresh the index in an environment with Graphify installed before treating it as
+current for the integrated backend.
+
 - Graph includes the uncommitted working tree, including untracked Flutter files.
 - Refreshed incrementally after the secure multi-tenant backend, admin console, protected-media Flutter transport, cancellation, and verification changes, then re-clustered without LLM labeling.
 - Stored graph: 3232 nodes, 6001 edges, 191 communities across 289 represented files.

@@ -18,9 +18,15 @@ EXCLUDED = {
     'test_reference_upload_browser.py': 'Real Chromium and local HTTP fixture.',
     'test_media_selection.py': 'Real Chromium/CDP fixture.',
     'test_muse_video_delivery.py': 'Real Chromium/CDP fixture.',
+    'test_media_thumbnails.py': 'FFmpeg integration; run via tools/ci_upstream.py with synthetic credentials.',
+    'test_session_cookie_rotation.py': 'Real engine with mocked HTTP; run via tools/ci_upstream.py.',
+    'test_version_reporting.py': 'Local read-only Git fixture; run via tools/ci_upstream.py.',
+    'test_release_integration.py': 'Local read-only Git fixture; run via tools/ci_upstream.py.',
 }
 CASES = tuple((name, args) for name, args in (
     ('test_ci_backend.py', ()),
+    ('test_generation_queue.py', ()),
+    ('test_upstream_merge_security.py', ()),
     ('test_client_config.py', ()),
     ('test_auth_cors.py', ()),
     ('test_deploy.py', ()),
