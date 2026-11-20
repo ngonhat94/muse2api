@@ -264,6 +264,8 @@ class ProjectsTest(unittest.TestCase):
             self.assertNotIn('cookies', persisted)
             self.assertEqual(upstream.call_count, 1)
 
+    @unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('ffprobe'),
+                         'Real rendering requires installed ffmpeg/ffprobe; capability denial is tested separately')
     def test_real_render_normalizes_audio_dimensions_and_owned_quota(self):
         import json
         import subprocess
