@@ -1865,6 +1865,9 @@ def current_principal(principal=Depends(auth)):
             "role": principal["role"], "capabilities": {
                 "manage_users": principal["role"] == "admin",
                 "global_settings": principal["role"] == "admin",
+                # All authenticated principals may generate. Account availability,
+                # quotas and rate limits remain submission-time preflight checks.
+                "generation": True,
                 "accounts": True, "tasks": True, "media": True}}
 
 
