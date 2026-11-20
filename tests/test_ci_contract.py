@@ -22,7 +22,7 @@ class CIContract(unittest.TestCase):
         jobs = workflow['jobs']
         self.assertEqual(set(jobs), {'test', 'build', 'deploy'})
         for job in jobs.values():
-            self.assertEqual(job['runs-on'], 'instabox-medium')
+            self.assertEqual(job['runs-on'], 'ubuntu-latest')
         deploy = jobs['deploy']
         self.assertEqual(deploy['if'], "github.event_name == 'push' && github.ref == 'refs/heads/master'")
         self.assertEqual(deploy['environment'], 'production')

@@ -6,7 +6,7 @@ This automation supersedes the migration's CI/CD deferral without importing the 
 
 `test` runs the existing guarded synthetic backend manifest (45 scripts), all eight offline JS scripts, and release safety tests. No Muse cookies or live users are used. `build` builds the actual Dockerfile and tests custom module imports, unauthenticated rejection, synthetic authenticated access, revision identity, persistent state/keys, replacement and failed-candidate rollback. It does not prove native desktop packaging, real Muse/browser generation, or production account readiness.
 
-All jobs use `instabox-medium` (fresh ephemeral CI runners, not the runtime machine). Public external-fork PR jobs consume the linked workspace's quota: enable GitHub Settings → Actions → General → **Require approval for all external contributors**. This setup does not alter that policy.
+All jobs use GitHub-hosted `ubuntu-latest` runners. Instabox is only the persistent backend runtime, so CI does not consume an additional Instabox sandbox slot. Enable GitHub Settings → Actions → General → **Require approval for all external contributors** for public external-fork PRs. This setup does not alter that policy.
 
 Only a push to `master` may export the tested image and enter `production`. The Environment permits `master` only. There is no manual dispatch or PR deployment bypass. Workflow and host locks serialize releases; in-progress releases are not cancelled.
 
@@ -18,7 +18,7 @@ Only a push to `master` may export the tested image and enter `production`. The 
 - Persistent host directories: `data`, `config`, `profiles`. `config/.env` is generated owner-only on the runtime, contains stable independent admin/encryption keys, and is never emitted. Administrative key rotation updates the mounted config directory atomically.
 - Admin key retrieval, if needed, must use an operator's protected terminal on the runtime, never Actions logs or chat.
 
-Free runtime policy currently allows 120-minute runs, a 30-minute idle auto-pause and possible cooldowns. This is **not a 24/7 hosting guarantee**. Ephemeral CI jobs also require workspace capacity; do not delete the runtime to make a runner fit.
+Free runtime policy currently allows 120-minute runs, a 30-minute idle auto-pause and possible cooldowns. This is **not a 24/7 hosting guarantee**. CI runs on GitHub and does not require another Instabox machine; do not delete the runtime for CI.
 
 ## Release/rollback/retention
 
@@ -39,4 +39,4 @@ docker build --build-arg BUILD_SHA="$(git rev-parse HEAD)" -t muse2api-ci .
 python tests/ci_image_smoke.py muse2api-ci "$(git rev-parse HEAD)"
 ```
 
-Docker smoke uses only unique `ci-*` service labels and temporary synthetic directories; it does not touch the production container. Follow PR checks with `gh pr checks --watch`, then match its head SHA/run to jobs in `instabox ci --json`. Queued or absent jobs are not successful runner evidence.
+Docker smoke uses only unique `ci-*` service labels and temporary synthetic directories; it does not touch the production container. Follow PR checks with `gh pr checks --watch` and verify GitHub job runner labels for the exact head SHA. `instabox ci` does not list these GitHub-hosted jobs; Instabox is used only by the deploy step after merge.
