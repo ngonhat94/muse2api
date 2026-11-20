@@ -1,5 +1,10 @@
 # MUSE2API
 
+## Custom backend fork
+
+Custom backend/extension features migrated from ngonhat94/murouter; Flutter client lives separately at https://github.com/ngonhat94/muse_app.
+CI/CD and production deployment automation are intentionally deferred. See [migration scope and verification](docs/CUSTOM_MIGRATION.md).
+
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python Version" />
   <img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi" alt="FastAPI" />
@@ -71,10 +76,10 @@ Extension 1.0.3 requires a manual reload in every browser profile. Update checks
   - 原生对接 Muse 顶配视频生成模型，可传递 5 秒 / 6 秒 / 8 秒 / 10 秒的时长请求（实际成片时长以 Muse 上游输出为准）及 `9:16` 竖屏 / `16:9` 横屏视频生成。
   - 支持上传单张首帧参考图，或通过 `images` 数组上传多张内容与风格参考图；多图模式以第一张作为主要起始画面。
   - 异步任务架构（`/v1/videos` 创建任务 + `/v1/videos/{task_id}` 状态轮询）。
-  - 内置媒体资源服务 `/v1/media/{filename}`，自动持久化存储生成的 MP4 / WebP 资源。
+  - 内置受保护媒体服务 `/v1/media/{filename}`，通过短时、租户与资源绑定的 capability URL 提供已持久化的 MP4 / WebP 资源。
 - ⚡ **真多账号并行并发（Multi-Account Parallel Execution）**
   - 基于 Chromium 原生 `Target.createBrowserContext` 隐身隔离容器，多任务在独立沙箱中并发执行。
-  - 多账号同时生图、生视频、流式对话零互相阻塞，Cookie 与 Session 100% 隔离绝不串扰。
+  - 多账号可并发生图、生视频与流式对话；服务端按租户校验账号所有权，未知归属默认拒绝，不会借用管理员或其他租户账号。
   - 内置智能账号冲突调度器，同账号自动互斥防踩踏，多账号自动并行跑满。
   - 可通过 `MUSE2API_CONCURRENCY` 随机器性能灵活调大并发上限（默认 2 并发）。
 - 🔄 **多账号池与热连接亲和调度**
@@ -288,7 +293,7 @@ curl -X POST "http://localhost:18610/v1/images/generations" \
   "data": [
     {
       "revised_prompt": "一只穿着反重力宇航服的机械柴犬，电影级光影，8k分辨率",
-      "url": "http://localhost:18610/v1/media/img_abc123.webp",
+      "url": "http://localhost:18610/v1/media/img_abc123.webp?cap=short_lived_capability",
       "kind": "image",
       "bytes": 54210
     }
@@ -366,7 +371,7 @@ curl -X POST "http://localhost:18610/v1/images/edits" \
     "status": "succeeded",
     "progress": 100,
     "result": {
-      "url": "http://localhost:18610/v1/media/vid_xyz789.mp4"
+      "url": "http://localhost:18610/v1/media/vid_xyz789.mp4?cap=short_lived_capability"
     }
   }
   ```
@@ -435,7 +440,9 @@ python tests/test_ref_image_safety.py
 
 ## 🔒 安全与隐私声明
 
-- **零数据外泄**：本软件全部数据（包括账号凭据、任务队列、媒体文件）均持久化在本地 `data/` 目录中，不依赖任何第三方遥测或外部中转服务。
+- **租户隔离**：管理员可创建独立用户密钥；服务器仅保存 SHA-256 摘要，原始密钥只在创建或轮换响应中显示一次。账号、Cookie、额度、任务和媒体均按所有者校验，密钥撤销也会立即作废已签发的媒体 capability。
+- **本地持久化边界**：账号凭据、用户摘要、任务和媒体索引保存在部署节点的 `data/`。生成、会话检查及用户主动提供的公网参考素材仍会与 Muse 或相应目标服务通信，因此本项目不宣称“零数据外泄”或端到端零信任。
+- **管理边界**：旧 `MUSE2API_KEY` 保留为管理员凭据；用户密钥不能轮换全局密钥、更新服务器或管理其他用户。迁移及 API 说明见 [`docs/MULTITENANT_VERIFICATION.md`](docs/MULTITENANT_VERIFICATION.md)。
 - **开源合规**：本项目仅供技术交流、系统自动化运维研究与自动化测试。请勿将本项目用于违反 Meta 平台服务条款或任何国家法律法规之用途。
 
 ---

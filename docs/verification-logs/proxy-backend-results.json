@@ -1,0 +1,84 @@
+[
+  {
+    "script": "test_tenant_review_blockers",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_tenant_review_blockers.log"
+  },
+  {
+    "script": "test_multitenant_security",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_multitenant_security.log"
+  },
+  {
+    "script": "test_account_proxy",
+    "arguments": [
+      "--offline"
+    ],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_account_proxy.log"
+  },
+  {
+    "script": "test_account_proxy_routing",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_account_proxy_routing.log"
+  },
+  {
+    "script": "test_proxy_status_receipt",
+    "arguments": [
+      "--backend-only"
+    ],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_proxy_status_receipt.log"
+  },
+  {
+    "script": "test_keepalive_scheduling",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_keepalive_scheduling.log"
+  },
+  {
+    "script": "test_session_health",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_session_health.log"
+  },
+  {
+    "script": "test_concurrency",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_concurrency.log"
+  },
+  {
+    "script": "test_local_update_safety",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_local_update_safety.log"
+  },
+  {
+    "script": "test_cookie_requirements",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_cookie_requirements.log"
+  },
+  {
+    "script": "test_refusal_rotation",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_refusal_rotation.log"
+  },
+  {
+    "script": "test_ref_image_safety",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_ref_image_safety.log"
+  },
+  {
+    "script": "test_reference_media_hardening",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/proxy-test_reference_media_hardening.log"
+  }
+]

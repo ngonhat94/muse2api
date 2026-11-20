@@ -275,13 +275,15 @@ class _NoRefImageRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _open_public_ref_image(url: str):
+def _open_public_ref_image(url: str, authority_check=None):
     """Open one public HTTP(S) URL with DNS rebinding and redirect checks."""
     for _ in range(11):
         parsed = urllib.parse.urlsplit(url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise RefImageSafetyError("参考图重定向仅允许有效的 http(s) URL")
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if authority_check:
+            authority_check()
         addresses = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
         checked = []
         for address in addresses:
@@ -300,6 +302,8 @@ def _open_public_ref_image(url: str):
             _RefImageHTTPHandler(checked[0]))
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         try:
+            if authority_check:
+                authority_check()
             return opener.open(req, timeout=20)
         except urllib.error.HTTPError as exc:
             location = exc.headers.get("Location")
@@ -370,7 +374,7 @@ class MuseEngine:
             env["PATH"] = (self.cfg.extra_path + os.pathsep + env.get("PATH", "")) if self.cfg.extra_path else env.get("PATH", "")
             args = [
                 self.cfg.chromium,
-                "--headless=new", "--no-sandbox", "--disable-gpu",
+                "--headless=new", "--disable-gpu",
                 "--disable-dev-shm-usage", "--disable-background-networking",
                 "--no-first-run", "--no-default-browser-check",
                 "--autoplay-policy=no-user-gesture-required",
@@ -380,8 +384,10 @@ class MuseEngine:
                 f"--user-data-dir={self.cfg.profile_dir}",
                 "about:blank",
             ]
+            if not getattr(self.cfg, "desktop", False):
+                args.insert(1, "--no-sandbox")
             # 尝试复用已有健康 CDP
-            if not self.proc:
+            if not self.proc and not getattr(self.cfg, "desktop", False):
                 try:
                     v = http_json(self._debug_url(), timeout=1)
                     if v and "webSocketDebuggerUrl" in v:
@@ -1165,6 +1171,12 @@ class MuseEngine:
             self.page.send("Input.insertText", {"text": prompt})
             self.page.js(_SETTER_JS % json.dumps(prompt))
 
+        # An uncertain CDP click may already have submitted upstream. Never
+        # retry the click or fall back to Enter for durable admissions.
+        if getattr(self._ensure_local(), "no_resubmit", False):
+            if self._click_send() != "clicked":
+                raise MuseGenerationError("Delivery uncertain; automatic resubmission disabled")
+            return "clicked"
         # 等待发送按钮就绪并点击
         clicked = "no-button"
         t_deadline = time.time() + 3.0
@@ -1351,6 +1363,8 @@ class MuseEngine:
             # 补点一次发送；60 秒仍没发出就报错，交给外层换号重试（以前要干等到总超时 10 分钟）。
             if elapsed > 25.0 and cur_cnt == base_agent_cnt:
                 unsent = self._composer_unsent()
+                if unsent and getattr(self._ensure_local(), "no_resubmit", False):
+                    raise MuseGenerationError("Delivery uncertain; automatic resubmission disabled")
                 if unsent and not resent:
                     resent = True
                     log.warning("提示词发出 %.0f 秒后仍在输入框（%s），补点一次发送", elapsed, unsent)
@@ -1797,15 +1811,21 @@ class MuseEngine:
         if img.startswith(("http://", "https://")):
             try:
                 req = urllib.request.Request(img, headers={"User-Agent": "Mozilla/5.0"})
+                authority_check = getattr(self, "reference_check", None)
+                if authority_check:
+                    authority_check()
                 response = (urllib.request.urlopen(req, timeout=20)
                             if self.cfg.ref_image_private_fetch
-                            else _open_public_ref_image(img))
+                            else (_open_public_ref_image(img, authority_check)
+                                  if authority_check else _open_public_ref_image(img)))
                 with response as resp:
                     declared = resp.headers.get("Content-Type")
                     mime = resp.headers.get_content_type() if declared else ""
+                    if authority_check:
+                        authority_check()
                     data = resp.read(MAX_REFERENCE_IMAGE_BYTES + 1)
                 return checked(data, mime, name=urllib.parse.urlsplit(img).path)
-            except (RefImageSafetyError, MuseGenerationError):
+            except (RefImageSafetyError, MuseGenerationError, MuseAuthError):
                 raise
             except Exception as exc:
                 raise MuseGenerationError(
@@ -1980,7 +2000,8 @@ class MuseEngine:
                  timeout: int = 240, expires: dict | None = None, account_id: str | None = None,
                  on_progress=None, reference_image: str | None = None,
                  reference_images: list[str] | None = None,
-                 stop_event=None) -> dict:
+                 stop_event=None, no_resubmit=False) -> dict:
+        self._ensure_local().no_resubmit = no_resubmit
         deadline = time.monotonic() + timeout
         self.ensure_page(cookies, expires, account_id=account_id)
         self.reset_thread(for_chat=False)
@@ -1993,6 +2014,7 @@ class MuseEngine:
             return self._generate_attached(prompt, expect, deadline, on_progress,
                                            stop_event, (upload or {}).get("hashes") or set())
         finally:
+            self._ensure_local().no_resubmit = False
             if upload:
                 shutil.rmtree(upload["dir"], ignore_errors=True)
 
@@ -2050,8 +2072,7 @@ class MuseEngine:
                 ext = self._pick_ext(mime, url, expect)
                 name = f"{uuid.uuid4().hex}{ext}"
                 dst = os.path.join(self.cfg.media_dir, name)
-                with open(dst, "wb") as f:
-                    f.write(data)
+                self._persist_media(name, data)
                 kind = "video" if ext in (".mp4", ".webm", ".mov") else "image"
                 if expect == "video" and kind != "video":
                     raise MuseGenerationError(f"期望生成视频，但提取成品类型为图片 ({ext})，拒绝以图片冒充视频交付")
@@ -2074,11 +2095,24 @@ class MuseEngine:
             ext = os.path.splitext(path)[1].lower() or ".bin"
             name = f"{uuid.uuid4().hex}{ext}"
             dst = os.path.join(self.cfg.media_dir, name)
-            shutil.move(path, dst)
+            from protection import StorageQuotaExceeded
+            try:
+                owner = getattr(self._ensure_local(), 'media_owner', None)
+                provider = getattr(self, 'media_limits', None)
+                if not owner or not provider:
+                    raise ValueError('media storage authority unavailable')
+                limit = provider(owner)['bytes']
+                if os.path.getsize(path) > limit:
+                    raise StorageQuotaExceeded('storage quota exceeded')
+                with open(path, 'rb') as source:
+                    data = source.read(limit + 1)
+                self._persist_media(name, data)
+            finally:
+                os.remove(path)
             kind = "video" if ext in (".mp4", ".webm", ".mov") else "image"
             if expect == "video" and kind != "video":
                 raise MuseGenerationError(f"期望生成视频，但下载成品类型为图片 ({ext})，拒绝以图片冒充视频交付")
-            return {"path": dst, "filename": name, "size": os.path.getsize(dst), "ext": ext, "mime": "",
+            return {"path": dst, "filename": name, "size": len(data), "ext": ext, "mime": "",
                     "kind": kind,
                     "via": "download", "attachment": att.get("tid"),
                     "w": att.get("w"), "h": att.get("h")}
@@ -2097,20 +2131,14 @@ class MuseEngine:
                 return e
         return ".mp4" if expect == "video" else ".png"
 
+    def _persist_media(self, name, data):
+        owner = getattr(self._ensure_local(), 'media_owner', None)
+        writer = getattr(self, 'media_writer', None)
+        if not owner or not writer:
+            raise ValueError('media storage authority unavailable')
+        return writer(name, data, owner)
+
     def _debug_dump(self, tag: str):
-        try:
-            info = self.page.js(
-                "JSON.stringify({atts:[...document.querySelectorAll('" + ATT_SEL + "')]"
-                ".map(function(a){var m=a.querySelector('img,video');return {"
-                "tid:a.getAttribute('data-testid'),"
-                "src:m?(m.currentSrc||m.src||'').slice(0,60):''};}),"
-                "buttons:[...document.querySelectorAll('button,[role=button]')]"
-                ".filter(b=>b.offsetParent!==null)"
-                ".map(b=>b.getAttribute('aria-label')||b.innerText.trim().slice(0,20))"
-                ".filter(Boolean).slice(-40),"
-                "tail:document.body.innerText.slice(-500)})")
-            with open(os.path.join(self.cfg.data_dir, f"debug-{tag}.json"), "w",
-                      encoding="utf-8") as f:
-                f.write(str(info))
-        except Exception:  # noqa: BLE001
-            pass
+        # DOM/body/attachment URLs can contain session data and capabilities.
+        # Deliberately do not collect these in shared server storage.
+        return

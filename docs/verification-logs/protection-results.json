@@ -1,0 +1,67 @@
+[
+  {
+    "test": "test_data_protection.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_data_protection.log"
+  },
+  {
+    "test": "test_multitenant_security.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_multitenant_security.log"
+  },
+  {
+    "test": "test_tenant_review_blockers.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_tenant_review_blockers.log"
+  },
+  {
+    "test": "test_reference_admission.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_reference_admission.log"
+  },
+  {
+    "test": "test_media_delete.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_media_delete.log"
+  },
+  {
+    "test": "test_concurrency.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_concurrency.log"
+  },
+  {
+    "test": "test_local_update_safety.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_local_update_safety.log"
+  },
+  {
+    "test": "test_cookie_requirements.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_cookie_requirements.log"
+  },
+  {
+    "test": "test_refusal_rotation.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_refusal_rotation.log"
+  },
+  {
+    "test": "test_account_proxy.py --offline",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_account_proxy.log"
+  },
+  {
+    "test": "test_account_proxy_routing.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_account_proxy_routing.log"
+  },
+  {
+    "test": "test_proxy_status_receipt.py --backend-only",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_proxy_status_receipt.log"
+  },
+  {
+    "test": "test_session_health.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-test_session_health.log"
+  }
+]

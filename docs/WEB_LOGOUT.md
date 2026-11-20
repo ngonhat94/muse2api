@@ -1,0 +1,11 @@
+# Explicit logout
+
+Muse Studio shows **Đăng xuất** at the fixed bottom of the desktop sidebar and first in the mobile **Thêm** menu for a remote connection. A confirmation explains that this removes the remembered API key from this device and discards unsaved screen content, but does not revoke the bearer key or cancel work already accepted by the backend.
+
+On confirmation the connection generation is invalidated immediately, all tracked Muse HTTP clients are closed, and session-scoped widgets/providers and the Navigator (including open dialogs) are replaced. Streams, recovery and polling are disposed; old HTTP clients cannot send again or deliver late responses into a replacement session. New Muse requests are blocked until an explicit login starts. No server-side logout/revoke endpoint is called.
+
+Credential writes/deletion are serialized. Before secure deletion, a persistent `explicit_logout` marker disables remembered-key restoration, including after a reload if secure deletion fails. A failed delete leaves the UI signed out, shows a fixed redacted warning and offers **Thử xóa API key lại**; it does not claim the credential was erased. Login is disabled until that retry succeeds. If the browser denies persistence itself, the same warning applies: the app cannot guarantee erasure across reload and the user should clear this site's storage before leaving a shared device.
+
+Public shared server configuration and the non-secret server address remain intact. Existing securely stored chat history and opaque pending-task IDs remain scoped to their original credential; logout clears the active UI, not saved creative work. Desktop local-engine mode does not show this remote logout control and is not stopped by `LogoutRequested`; its existing lifecycle controls are unchanged.
+
+Verification uses synthetic credentials/transports only. `muse_app/test/logout_test.dart` covers desktop/mobile confirmation and cancellation, duplicate presses, deletion failure/retry, fresh login gate and reload, request silence after logout, persisted restore suppression, write/delete ordering and stale-client rejection. No real Muse account, cookies, generation or production mutation is needed.

@@ -59,6 +59,13 @@ with tempfile.TemporaryDirectory(prefix='muse-viewer-test-', dir=Path.home(), ig
                           media_dir=tmp + '/media')
     Path(cfg.download_dir).mkdir()
     engine = module.MuseEngine(cfg)
+    # Synthetic owner/writer fixture: production remains fail-closed without authority.
+    Path(cfg.media_dir).mkdir()
+    engine._ensure_local().media_owner = 'viewer-fixture'
+    def write_fixture_media(name, data, owner):
+        assert owner == 'viewer-fixture'
+        (Path(cfg.media_dir) / name).write_bytes(data)
+    engine.media_writer = write_fixture_media
     try:
         engine.start()
         page = engine._open_page()

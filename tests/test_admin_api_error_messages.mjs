@@ -30,7 +30,7 @@ function makeApi({ status, text }) {
   const ctx = {
     KEY: "test-key",
     setAuth: () => {},
-    fetch: async () => ({ status, ok: status >= 200 && status < 300, text: async () => text }),
+    fetch: async () => ({ status, headers: { get: () => null }, ok: status >= 200 && status < 300, text: async () => text }),
   };
   vm.createContext(ctx);
   return vm.runInContext(body + "\napi", ctx, { filename: "admin-api.js" });
@@ -75,7 +75,12 @@ for (const [status, snippet] of [
     const api = makeApi({ status, text: "<html></html>" });
     await assert.rejects(() => api("/admin/accounts"), (e) => {
       assert.ok(e.message.includes(snippet));
-      assert.ok(e.message.includes("HTTP " + status));
+      if (status === 429) {
+        assert.match(e.message, /60 秒/);
+        assert.match(e.message, /勿自动重新提交生成/);
+      } else {
+        assert.ok(e.message.includes("HTTP " + status));
+      }
       return true;
     });
   });

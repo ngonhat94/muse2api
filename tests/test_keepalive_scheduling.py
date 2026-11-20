@@ -44,7 +44,7 @@ def test_keepalive_only_runs_when_due():
                  "expires_at": now + 24 * 3600, "last_keepalive": now - 7 * 3600, "ok": True},
             ]
     app.store = FakeStore()
-    app.CFG = SimpleNamespace(keepalive_disabled_accounts=False)
+    app.CFG = SimpleNamespace(keepalive_disabled_accounts=False, api_key=original_cfg.api_key)
     called = []
     def fake_probe(aid, check_quota=False):
         called.append(aid)

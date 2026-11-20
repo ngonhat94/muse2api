@@ -11,15 +11,16 @@ function fixture({incognito = false, tab = true, stores, cookies, language = 'zh
   const calls = {reads: [], uploads: []};
   const elements = new Map();
   const element = id => {
-    if (!elements.has(id)) elements.set(id, {value: '', innerHTML: '', addEventListener() {}});
+    if (!elements.has(id)) elements.set(id, {value: '', innerHTML: '', style: {}, textContent: '', addEventListener() {}});
     return elements.get(id);
   };
   element('base').value = 'https://test.invalid';
   element('key').value = 'fixture-key';
   const context = vm.createContext({
     document: {getElementById: element, querySelectorAll: () => [], documentElement: {}, title: ''},
-    navigator: {language}, localStorage: {getItem: () => null},
+    URL, navigator: {language}, localStorage: {getItem: () => null},
     chrome: {
+      permissions: {request: async () => true},
       storage: {local: {get: async () => ({}), set: async () => {}}},
       tabs: {query: async () => active ? [active] : []},
       cookies: {
@@ -78,8 +79,8 @@ for (const options of [{tab: false}, {stores: [{id: 'wrong-default', tabIds: [99
   assert.equal(f.calls.uploads.length, 1);
   assert.equal(f.calls.uploads[0].body.cookies.hatch_sess, 'httpOnly%3Afixture%2Bvalue');
   assert.equal(f.calls.uploads[0].body.expires.hatch_sess, 2000000000);
-  assert.match(f.element('log').innerHTML, /Cookie 来源：当前无痕\/InPrivate窗口/);
-  assert.match(f.element('log').innerHTML, /请到管理页测试账号/);
+  assert.match(f.element('log').textContent, /Cookie 来源：当前无痕\/InPrivate窗口/);
+  assert.match(f.element('log').textContent, /请到管理页测试账号/);
   checks++;
 }
 for (const options of [{tab: false}, {cookies: [cookie('')]}]) {
@@ -92,7 +93,7 @@ for (const options of [{tab: false}, {cookies: [cookie('')]}]) {
 {
   const f = fixture({incognito: true, language: 'en-US'});
   await f.run('run()');
-  assert.match(f.element('log').innerHTML, /current Incognito\/InPrivate window/);
+  assert.match(f.element('log').textContent, /current Incognito\/InPrivate window/);
   checks++;
 }
 console.log(`PASS: ${checks} extension cookie-store, URL scope, duplicate precedence and import checks; no live cookies/network`);

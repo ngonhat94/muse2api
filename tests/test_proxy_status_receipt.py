@@ -1,5 +1,5 @@
 """Regression for saved-proxy status and verified draft-to-save handoff; no real network."""
-import argparse,copy,json,os,sys,tempfile,time
+import argparse,asyncio,copy,json,os,sys,tempfile,time
 from pathlib import Path
 from contextlib import contextmanager
 from unittest.mock import patch,Mock
@@ -7,6 +7,7 @@ from unittest.mock import patch,Mock
 parser=argparse.ArgumentParser()
 parser.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[1])
 parser.add_argument('--probe-only',action='store_true')
+parser.add_argument('--backend-only',action='store_true',help='skip Node renderer subprocess for forbidden-process offline runs')
 args=parser.parse_args()
 sys.path.insert(0,str(args.source))
 with tempfile.TemporaryDirectory(prefix='muse-proxy-status-') as home:
@@ -26,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix='muse-proxy-status-') as home:
  def test(aid,proxy):
   req=app.ProxyTestRequest(proxy=app.AccountProxy(**proxy))
   with patch.object(app,'request_proxy_context',route),patch('requests.Session',return_value=session),patch.object(app.engine,'renew_session_http',return_value={'status':'assigned'}):
-   return app.test_account_proxy(aid,req)
+   return asyncio.run(app.test_account_proxy(aid,req))
  def save(aid,proxy):
   return app.patch_account(aid,app.AccountPatch(proxy=app.AccountProxy(**proxy)))
  aid=account();before=copy.deepcopy(app.store.get_account(aid))
@@ -74,6 +75,8 @@ with tempfile.TemporaryDirectory(prefix='muse-proxy-status-') as home:
  assert result['proxy_reachable'] is False and record['proxy_status']['proxy_reachable'] is False
  response.status_code=200
  print('PASS: failed tests remain failed after saving; never manufacture a green result')
+
+if args.backend_only: raise SystemExit(0)
 
 # Exercise the actual account-row renderer, including empty and failed records.
 import subprocess

@@ -1,0 +1,72 @@
+[
+  {
+    "script": "operations",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-operations.log"
+  },
+  {
+    "script": "data_protection",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-data_protection.log"
+  },
+  {
+    "script": "protection_review_fixes",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-protection_review_fixes.log"
+  },
+  {
+    "script": "media_boundary",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-media_boundary.log"
+  },
+  {
+    "script": "tenant_review_blockers",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-tenant_review_blockers.log"
+  },
+  {
+    "script": "multitenant_security",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-multitenant_security.log"
+  },
+  {
+    "script": "reference_admission",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-reference_admission.log"
+  },
+  {
+    "script": "async_images",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-async_images.log"
+  },
+  {
+    "script": "concurrency",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-concurrency.log"
+  },
+  {
+    "script": "media_delete",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-media_delete.log"
+  },
+  {
+    "script": "account_proxy_routing",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-account_proxy_routing.log"
+  },
+  {
+    "script": "reference_media_hardening",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-reference_media_hardening.log"
+  },
+  {
+    "script": "local_update_safety",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-local_update_safety.log"
+  },
+  {
+    "script": "session_health",
+    "exit_code": 0,
+    "log": "docs/verification-logs/operations-session_health.log"
+  }
+]

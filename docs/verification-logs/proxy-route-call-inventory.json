@@ -1,0 +1,979 @@
+[
+  {
+    "function": "healthz",
+    "line": 1486,
+    "routes": [
+      "app.get('/healthz')"
+    ],
+    "calls": [
+      "app.get",
+      "int",
+      "time.time"
+    ]
+  },
+  {
+    "function": "readyz",
+    "line": 1491,
+    "routes": [
+      "app.get('/readyz')"
+    ],
+    "calls": [
+      "Depends",
+      "_owner",
+      "a.get",
+      "app.get",
+      "bool",
+      "engine.proc.poll",
+      "len",
+      "principal.get",
+      "store.list_accounts"
+    ]
+  },
+  {
+    "function": "models",
+    "line": 1500,
+    "routes": [
+      "app.get('/v1/models')"
+    ],
+    "calls": [
+      "Depends",
+      "app.get"
+    ]
+  },
+  {
+    "function": "current_principal",
+    "line": 1505,
+    "routes": [
+      "app.get('/v1/me')"
+    ],
+    "calls": [
+      "Depends",
+      "app.get",
+      "principal.get"
+    ]
+  },
+  {
+    "function": "list_users",
+    "line": 1514,
+    "routes": [
+      "app.get('/admin/users')"
+    ],
+    "calls": [
+      "Depends",
+      "app.get",
+      "users.list"
+    ]
+  },
+  {
+    "function": "create_user",
+    "line": 1519,
+    "routes": [
+      "app.post('/admin/users', status_code=201)"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "app.post",
+      "str",
+      "users.create"
+    ]
+  },
+  {
+    "function": "patch_user",
+    "line": 1529,
+    "routes": [
+      "app.patch('/admin/users/{user_id}')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "app.patch",
+      "str",
+      "users.patch"
+    ]
+  },
+  {
+    "function": "rotate_user_key",
+    "line": 1540,
+    "routes": [
+      "app.post('/admin/users/{user_id}/key')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "app.post",
+      "users.rotate"
+    ]
+  },
+  {
+    "function": "revoke_user_key",
+    "line": 1550,
+    "routes": [
+      "app.delete('/admin/users/{user_id}/key')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "app.delete",
+      "users.revoke"
+    ]
+  },
+  {
+    "function": "create_image_task",
+    "line": 1684,
+    "routes": [
+      "app.post('/v1/images/tasks')"
+    ],
+    "calls": [
+      "(principal or {}).get",
+      "Depends",
+      "Header",
+      "_image_references",
+      "_owner",
+      "_prepare_reference_images",
+      "_queue_image",
+      "_reference_kinds",
+      "app.post",
+      "build_image_prompt"
+    ]
+  },
+  {
+    "function": "get_image_task",
+    "line": 1692,
+    "routes": [
+      "app.get('/v1/images/tasks/{task_id}')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "ImageRequest",
+      "_image_response",
+      "_owner",
+      "app.get",
+      "dict",
+      "out.get",
+      "out.update",
+      "store.get_task",
+      "task.get"
+    ]
+  },
+  {
+    "function": "images_generations",
+    "line": 1706,
+    "routes": [
+      "app.post('/v1/images/generations')"
+    ],
+    "calls": [
+      "(principal or {}).get",
+      "Depends",
+      "HTTPException",
+      "_await_generation",
+      "_image_references",
+      "_image_response",
+      "_owner",
+      "_queue_image",
+      "_reference_kinds",
+      "app.post",
+      "asyncio.to_thread",
+      "build_image_prompt",
+      "str"
+    ]
+  },
+  {
+    "function": "images_edits",
+    "line": 1728,
+    "routes": [
+      "app.post('/v1/images/edits')"
+    ],
+    "calls": [
+      "(getattr(img_field, 'content_type', '') or '').split",
+      "(getattr(img_field, 'content_type', '') or '').split(';', 1)[0].strip",
+      "(getattr(img_field, 'content_type', '') or '').split(';', 1)[0].strip().lower",
+      "(principal or {}).get",
+      "Depends",
+      "HTTPException",
+      "ImageRequest",
+      "_await_generation",
+      "_generic_upload_mime",
+      "_image_response",
+      "_owner",
+      "_queue_image",
+      "_reference_kinds",
+      "_reference_list",
+      "app.post",
+      "asyncio.to_thread",
+      "base64.b64encode",
+      "base64.b64encode(content).decode",
+      "body.get",
+      "build_image_prompt",
+      "enumerate",
+      "form.get",
+      "form.getlist",
+      "getattr",
+      "hasattr",
+      "img_field.read",
+      "img_field.strip",
+      "int",
+      "isinstance",
+      "len",
+      "ref_image_data.append",
+      "request.form",
+      "request.headers.get",
+      "request.headers.get('content-type', '').lower",
+      "request.json",
+      "str"
+    ]
+  },
+  {
+    "function": "create_video",
+    "line": 1832,
+    "routes": [
+      "app.post('/v1/videos')",
+      "app.post('/v1/videos/generations')"
+    ],
+    "calls": [
+      "(principal or {}).get",
+      "(store.get_task(task['id'], owner_id=owner_id) or {}).get",
+      "Depends",
+      "HTTPException",
+      "OutstandingJob",
+      "_owner",
+      "_reference_kinds",
+      "_run_generation",
+      "_video_references",
+      "app.post",
+      "asyncio.to_thread",
+      "build_video_prompt",
+      "current.get",
+      "job.release",
+      "len",
+      "media_url",
+      "os.path.join",
+      "os.remove",
+      "res.get",
+      "round",
+      "store.create_task",
+      "store.get_task",
+      "store.register_media",
+      "store.tasks.values",
+      "store.update_task",
+      "str",
+      "sum",
+      "task.get",
+      "threading.Thread",
+      "threading.Thread(target=worker, daemon=True).start",
+      "time.time",
+      "valid_media_name"
+    ]
+  },
+  {
+    "function": "get_video",
+    "line": 1901,
+    "routes": [
+      "app.get('/v1/videos/{task_id}')",
+      "app.get('/v1/videos/generations/{task_id}')"
+    ],
+    "calls": [
+      "(out.get('result') or {}).get",
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "app.get",
+      "dict",
+      "isinstance",
+      "max",
+      "media_url",
+      "out.get",
+      "out['result'].get",
+      "store.get_task"
+    ]
+  },
+  {
+    "function": "chat_completions",
+    "line": 1972,
+    "routes": [
+      "app.post('/v1/chat/completions')"
+    ],
+    "calls": [
+      "''.join",
+      "(principal or {}).get",
+      "(req.prompt or '').strip",
+      "Depends",
+      "HTTPException",
+      "OutstandingJob",
+      "ReservedStreamingResponse",
+      "_chat_chunk",
+      "_owner",
+      "_pace_text",
+      "_sse",
+      "_want_usage",
+      "acc.get",
+      "app.post",
+      "asyncio.create_task",
+      "asyncio.shield",
+      "asyncio.to_thread",
+      "buf.lstrip",
+      "build_chat_prompt",
+      "build_tools_prompt",
+      "engine.reset_thread",
+      "enumerate",
+      "head.startswith",
+      "int",
+      "len",
+      "parse_tool_calls",
+      "resolve_model",
+      "safe_chat_stream",
+      "store.mark",
+      "store.pick_account",
+      "str",
+      "sync_stream",
+      "time.time",
+      "tool_call_deltas",
+      "uuid.uuid4"
+    ]
+  },
+  {
+    "function": "responses_api",
+    "line": 2154,
+    "routes": [
+      "app.post('/v1/responses')"
+    ],
+    "calls": [
+      "''.join",
+      "(principal or {}).get",
+      "Depends",
+      "HTTPException",
+      "OutstandingJob",
+      "ReservedStreamingResponse",
+      "_owner",
+      "_responses_messages",
+      "_sse_event",
+      "acc.get",
+      "app.post",
+      "asyncio.create_task",
+      "asyncio.shield",
+      "asyncio.to_thread",
+      "build_chat_prompt",
+      "envelope",
+      "int",
+      "log.warning",
+      "resolve_model",
+      "safe_chat_stream",
+      "store.pick_account",
+      "str",
+      "sync_stream",
+      "time.time",
+      "uuid.uuid4"
+    ]
+  },
+  {
+    "function": "get_media",
+    "line": 2246,
+    "routes": [
+      "app.get('/v1/media/{name}')"
+    ],
+    "calls": [
+      "FileResponse",
+      "HTTPException",
+      "_verify_media_capability",
+      "app.get",
+      "os.path.isfile",
+      "os.path.join",
+      "valid_media_name"
+    ]
+  },
+  {
+    "function": "admin_status",
+    "line": 2258,
+    "routes": [
+      "app.get('/admin/status')"
+    ],
+    "calls": [
+      "Depends",
+      "_owner",
+      "_public_base",
+      "_public_task",
+      "app.get",
+      "bool",
+      "engine.proc.poll",
+      "len",
+      "list",
+      "principal.get",
+      "store.list_accounts",
+      "store.list_media_names",
+      "store.list_tasks",
+      "store.stats"
+    ]
+  },
+  {
+    "function": "list_accounts",
+    "line": 2283,
+    "routes": [
+      "app.get('/admin/accounts')"
+    ],
+    "calls": [
+      "Depends",
+      "_owner",
+      "app.get",
+      "store.list_accounts",
+      "store.stats"
+    ]
+  },
+  {
+    "function": "add_account",
+    "line": 2289,
+    "routes": [
+      "app.post('/admin/accounts')"
+    ],
+    "calls": [
+      "', '.join",
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "acc.get",
+      "added.append",
+      "any",
+      "app.post",
+      "cookies.update",
+      "dict",
+      "len",
+      "parse_batch",
+      "parse_cookie_text",
+      "req.proxy.configuration",
+      "seen.append",
+      "store.add_account",
+      "store.update_account"
+    ]
+  },
+  {
+    "function": "patch_account",
+    "line": 2342,
+    "routes": [
+      "app.patch('/admin/accounts/{aid}')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "_PROXY_TEST_RECEIPTS.get",
+      "_PROXY_TEST_RECEIPTS.pop",
+      "_owner",
+      "_proxy_test_identity",
+      "app.patch",
+      "changes.update",
+      "dict",
+      "engine._last_http_renew.pop",
+      "existing.get",
+      "req.proxy.configuration",
+      "store.get_account",
+      "store.public_account",
+      "store.update_account",
+      "time.monotonic"
+    ]
+  },
+  {
+    "function": "test_account_proxy",
+    "line": 2370,
+    "routes": [
+      "app.post('/admin/accounts/{aid}/proxy/test')"
+    ],
+    "calls": [
+      "Depends",
+      "app.post",
+      "asyncio.to_thread"
+    ]
+  },
+  {
+    "function": "del_account",
+    "line": 2427,
+    "routes": [
+      "app.delete('/admin/accounts/{aid}')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "_PROXY_TEST_RECEIPTS.pop",
+      "_owner",
+      "app.delete",
+      "store.delete_account"
+    ]
+  },
+  {
+    "function": "test_account",
+    "line": 2438,
+    "routes": [
+      "app.post('/admin/accounts/{aid}/test')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "JSONResponse",
+      "_account_operation",
+      "_maintenance_check",
+      "_owner",
+      "_sync_cookies",
+      "acc.get",
+      "app.post",
+      "asyncio.to_thread",
+      "engine.quota",
+      "engine.refresh",
+      "engine.start",
+      "int",
+      "quota.get",
+      "store.get_account",
+      "store.mark",
+      "store.touch_keepalive",
+      "store.update_account",
+      "str",
+      "time.time",
+      "type"
+    ]
+  },
+  {
+    "function": "relogin_account",
+    "line": 2489,
+    "routes": [
+      "app.post('/admin/accounts/{aid}/relogin')"
+    ],
+    "calls": [
+      "Depends",
+      "app.post",
+      "test_account"
+    ]
+  },
+  {
+    "function": "update_cookies",
+    "line": 2494,
+    "routes": [
+      "app.post('/admin/accounts/{aid}/cookies')"
+    ],
+    "calls": [
+      "(payload.get('expires') or {}).items",
+      "Body",
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "_pos",
+      "acc.get",
+      "app.post",
+      "cookies.update",
+      "dict",
+      "int",
+      "len",
+      "parse_cookie_text",
+      "payload.get",
+      "store.update_account",
+      "time.time"
+    ]
+  },
+  {
+    "function": "relogin",
+    "line": 2517,
+    "routes": [
+      "app.post('/admin/relogin')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "JSONResponse",
+      "_account_operation",
+      "_maintenance_check",
+      "_owner",
+      "app.post",
+      "asyncio.to_thread",
+      "engine.refresh",
+      "engine.start",
+      "selected.get",
+      "store.pick_account",
+      "str"
+    ]
+  },
+  {
+    "function": "query_quota",
+    "line": 2542,
+    "routes": [
+      "app.post('/admin/accounts/{aid}/quota')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "MuseGenerationError",
+      "_account_operation",
+      "_maintenance_check",
+      "_owner",
+      "acc.get",
+      "app.post",
+      "asyncio.to_thread",
+      "engine.quota",
+      "engine.start",
+      "int",
+      "q.get",
+      "store.get_account",
+      "store.mark",
+      "store.update_account",
+      "str",
+      "time.time"
+    ]
+  },
+  {
+    "function": "query_any_quota",
+    "line": 2582,
+    "routes": [
+      "app.post('/admin/quota')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "app.post",
+      "query_quota",
+      "store.pick_account"
+    ]
+  },
+  {
+    "function": "get_apikey",
+    "line": 2598,
+    "routes": [
+      "app.get('/admin/apikey')"
+    ],
+    "calls": [
+      "Depends",
+      "_public_base",
+      "app.get"
+    ]
+  },
+  {
+    "function": "rotate_apikey",
+    "line": 2607,
+    "routes": [
+      "app.post('/admin/apikey/rotate')"
+    ],
+    "calls": [
+      "Depends",
+      "_persist_env",
+      "app.post",
+      "secrets.token_hex"
+    ]
+  },
+  {
+    "function": "cookie_helper",
+    "line": 2640,
+    "routes": [
+      "app.get('/admin/cookie-helper')"
+    ],
+    "calls": [
+      "Depends",
+      "FileResponse",
+      "HTTPException",
+      "app.get",
+      "os.path.isfile",
+      "os.path.join"
+    ]
+  },
+  {
+    "function": "extension_zip",
+    "line": 2652,
+    "routes": [
+      "app.get('/admin/extension')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "Response",
+      "app.get",
+      "buf.getvalue",
+      "buf.seek",
+      "dirs.sort",
+      "io.BytesIO",
+      "os.path.isdir",
+      "os.path.join",
+      "os.path.relpath",
+      "os.path.relpath(p, src).replace",
+      "os.walk",
+      "sorted",
+      "z.write",
+      "zipfile.ZipFile"
+    ]
+  },
+  {
+    "function": "extension_files",
+    "line": 2678,
+    "routes": [
+      "app.get('/admin/extension/files')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "app.get",
+      "dirs.sort",
+      "files.append",
+      "os.path.isdir",
+      "os.path.join",
+      "os.path.relpath",
+      "os.path.relpath(p, src).replace",
+      "os.walk",
+      "sorted"
+    ]
+  },
+  {
+    "function": "admin_tasks",
+    "line": 2708,
+    "routes": [
+      "app.get('/admin/tasks')"
+    ],
+    "calls": [
+      "Depends",
+      "_owner",
+      "_public_task",
+      "app.get",
+      "max",
+      "min",
+      "store.list_tasks"
+    ]
+  },
+  {
+    "function": "del_task",
+    "line": 2715,
+    "routes": [
+      "app.delete('/admin/tasks/{tid}')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "app.delete",
+      "store.delete_task"
+    ]
+  },
+  {
+    "function": "cancel_task",
+    "line": 2725,
+    "routes": [
+      "app.post('/admin/tasks/{tid}/cancel')",
+      "app.post('/v1/images/tasks/{tid}/cancel')",
+      "app.post('/v1/videos/{tid}/cancel')",
+      "app.post('/v1/videos/generations/{tid}/cancel')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "app.post",
+      "bool",
+      "store.cancel_task",
+      "task.get"
+    ]
+  },
+  {
+    "function": "clear_tasks",
+    "line": 2734,
+    "routes": [
+      "app.post('/admin/tasks/clear')"
+    ],
+    "calls": [
+      "Body",
+      "Depends",
+      "_owner",
+      "app.post",
+      "int",
+      "max",
+      "min",
+      "payload.get",
+      "store.clear_tasks"
+    ]
+  },
+  {
+    "function": "admin_media",
+    "line": 2740,
+    "routes": [
+      "app.get('/admin/media')"
+    ],
+    "calls": [
+      "Depends",
+      "_owner",
+      "app.get",
+      "int",
+      "items.append",
+      "items.sort",
+      "len",
+      "media_url",
+      "os.path.getmtime",
+      "os.path.getsize",
+      "os.path.isdir",
+      "os.path.isfile",
+      "os.path.join",
+      "os.path.splitext",
+      "os.path.splitext(name)[1].lower",
+      "store.list_media_names"
+    ]
+  },
+  {
+    "function": "delete_media",
+    "line": 2758,
+    "routes": [
+      "app.post('/admin/media/delete')"
+    ],
+    "calls": [
+      "Body",
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "app.post",
+      "errors.append",
+      "isinstance",
+      "len",
+      "os.path.isfile",
+      "os.path.join",
+      "os.remove",
+      "payload.get",
+      "store.delete_media",
+      "store.media_owner",
+      "str",
+      "valid_media_name"
+    ]
+  },
+  {
+    "function": "delete_single_media",
+    "line": 2786,
+    "routes": [
+      "app.delete('/admin/media/{name}')"
+    ],
+    "calls": [
+      "Depends",
+      "HTTPException",
+      "_owner",
+      "app.delete",
+      "os.path.isfile",
+      "os.path.join",
+      "os.remove",
+      "store.delete_media",
+      "store.media_owner",
+      "valid_media_name"
+    ]
+  },
+  {
+    "function": "index",
+    "line": 2816,
+    "routes": [
+      "app.get('/', response_class=HTMLResponse)"
+    ],
+    "calls": [
+      "HTMLResponse",
+      "_admin_html",
+      "app.get"
+    ]
+  },
+  {
+    "function": "admin_page",
+    "line": 2821,
+    "routes": [
+      "app.get('/admin', response_class=HTMLResponse)"
+    ],
+    "calls": [
+      "HTMLResponse",
+      "_admin_html",
+      "app.get"
+    ]
+  },
+  {
+    "function": "trigger_keepalive_all",
+    "line": 3008,
+    "routes": [
+      "app.post('/admin/accounts/keepalive')"
+    ],
+    "calls": [
+      "(principal or {}).get",
+      "Depends",
+      "_keepalive_state",
+      "_owner",
+      "app.post",
+      "run_keepalive_all"
+    ]
+  },
+  {
+    "function": "trigger_keepalive_single",
+    "line": 3019,
+    "routes": [
+      "app.post('/admin/accounts/{aid}/keepalive')"
+    ],
+    "calls": [
+      "Depends",
+      "_owner",
+      "app.post",
+      "asyncio.to_thread"
+    ]
+  },
+  {
+    "function": "get_keepalive_status",
+    "line": 3025,
+    "routes": [
+      "app.get('/admin/keepalive/status')"
+    ],
+    "calls": [
+      "Depends",
+      "_keepalive_state",
+      "_owner",
+      "app.get"
+    ]
+  },
+  {
+    "function": "admin_check_update",
+    "line": 3342,
+    "routes": [
+      "app.get('/admin/update/check')",
+      "app.get('/admin/repo/status')"
+    ],
+    "calls": [
+      "Depends",
+      "app.get",
+      "asyncio.to_thread"
+    ]
+  },
+  {
+    "function": "admin_upgrade_now",
+    "line": 3349,
+    "routes": [
+      "app.post('/admin/update/upgrade')",
+      "app.post('/admin/repo/pull')"
+    ],
+    "calls": [
+      "Body",
+      "Depends",
+      "app.post",
+      "asyncio.to_thread",
+      "engine.stop",
+      "isinstance",
+      "os._exit",
+      "payload.get",
+      "threading.Thread",
+      "threading.Thread(target=_delayed_restart, daemon=True).start",
+      "time.sleep"
+    ]
+  },
+  {
+    "function": "admin_repo_push",
+    "line": 3366,
+    "routes": [
+      "app.post('/admin/repo/push')"
+    ],
+    "calls": [
+      "(p_res.stderr or p_res.stdout or '').strip",
+      "(payload.get('github_token') or '').strip",
+      "(payload.get('message') or '').strip",
+      "Body",
+      "Depends",
+      "HTTPException",
+      "_check_update_sync",
+      "_ensure_git_repo",
+      "_git",
+      "_persist_env",
+      "_read_env_key",
+      "app.post",
+      "asyncio.to_thread",
+      "os.path.exists",
+      "os.path.join",
+      "payload.get",
+      "st.stdout.strip",
+      "time.strftime"
+    ]
+  }
+]
