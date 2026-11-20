@@ -28,6 +28,30 @@ class ReleaseSafety(unittest.TestCase):
                         release.release(root, 'test-service', 'a' * 40, upload, 18610, '')
                 self.assertFalse(upload.exists()); self.assertTrue(other.exists())
 
+    def test_new_runtime_keys_are_owner_only_and_not_emitted(self):
+        import json
+        import io
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def fake_docker(*args, **kwargs):
+                from types import SimpleNamespace
+                if args[:2] == ('image', 'inspect'):
+                    return SimpleNamespace(stdout=json.dumps([{'Config': {'Labels': {
+                        release.LABEL: 'test-service',
+                        'org.opencontainers.image.revision': 'a' * 40}}}]))
+                if args[0] == 'run':
+                    raise RuntimeError('stop before launching synthetic container')
+                return SimpleNamespace(stdout='', returncode=0)
+            output = io.StringIO()
+            with patch.object(release, 'inspect', return_value=None), patch.object(release, 'docker', side_effect=fake_docker), redirect_stdout(output):
+                with self.assertRaises(RuntimeError):
+                    release._rollout(root, 'test-service', 'a' * 40, root / 'archive', 18610, '')
+            config = root / 'config/.env'
+            self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+            self.assertIn('MUSE2API_COOKIE_KEY=', config.read_text())
+            self.assertEqual(output.getvalue(), '')
+
     def test_lock_prevents_parallel_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -67,7 +67,7 @@ def main(image, sha):
             assert request('/v1/me', key)['role'] == 'admin'
             assert request('/readyz', key)['status'] == 'no_account'
             # Custom security modules must import from inside the actual image.
-            release.docker('exec', name, 'python', '-c', 'import app,tenant,authority,protection,idempotency,operations,client_config')
+            release.docker('exec', name, 'python', '-c', 'import tenant,authority,protection,idempotency,operations,client_config')
             (root / 'data/synthetic-sentinel').write_text('persistent')
             archive = upload(good, sha)
             release.release(root, name, sha, archive, port, '')

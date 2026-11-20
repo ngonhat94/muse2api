@@ -34,7 +34,7 @@ def healthy(port, sha, name):
             if json.load(response)['status'] != 'ok':
                 return False
         info = inspect(name)
-        return (bool(info) and info['State']['Running'] and
+        return (info is not None and info['State']['Running'] and
                 f'MUSE2API_BUILD_SHA={sha}' in info['Config']['Env'] and
                 info['Config']['Labels']['org.opencontainers.image.revision'] == sha)
     except (OSError, ValueError, KeyError, TypeError):
@@ -77,7 +77,7 @@ def _rollout(root, name, sha, archive, port, public_url):
     config = root / 'config' / '.env'
     if not config.exists():
         # Generated on host, no credential is passed as argv or written to logs.
-        with config.open('x', opener=lambda p, f: os.open(p, f, 0o600)) as handle:
+        with open(config, 'x', opener=lambda p, f: os.open(p, f, 0o600)) as handle:
             handle.write('MUSE2API_KEY=' + secrets.token_urlsafe(48) + '\n')
             handle.write('MUSE2API_COOKIE_KEY=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() + '\n')
     if config.stat().st_mode & 0o077:
