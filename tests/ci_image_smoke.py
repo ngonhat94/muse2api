@@ -76,7 +76,10 @@ def main(image, sha):
             assert request('/v1/video-projects/' + project['id'], key)['title'] == 'Image contract'
             assert request('/readyz', key)['status'] == 'no_account'
             # Custom security modules must import from inside the actual image.
-            release.docker('exec', name, 'python', '-c', 'import app,video_projects,tenant,authority,protection,idempotency,operations,client_config; assert any(r.path == "/v1/video-projects" for r in app.app.routes)')
+            # The serving app has already imported app/project routes above.
+            # Do not import app in a second process: its exclusive runtime lock
+            # deliberately rejects a second app instance sharing the same data.
+            release.docker('exec', name, 'python', '-c', 'import video_projects,tenant,authority,protection,idempotency,operations,client_config')
             (root / 'data/synthetic-sentinel').write_text('persistent')
             archive = upload(good, sha)
             release.release(root, name, sha, archive, port, '')
