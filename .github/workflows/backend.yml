@@ -1,0 +1,93 @@
+name: Backend CI and Instabox release
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+permissions:
+  contents: read
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: instabox-medium
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r tests/requirements-ci.txt
+      - name: Guarded synthetic backend regressions
+        run: python tests/run_custom_regressions.py
+      - name: Offline JavaScript regressions
+        run: |
+          for test in tests/*.mjs tests/*.cjs; do node "$test"; done
+      - name: Release safety regressions
+        run: python -m unittest discover -s tests -p 'test_ci_*.py' -v
+  build:
+    needs: test
+    runs-on: instabox-medium
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build immutable service-owned image
+        run: |
+          docker build --build-arg BUILD_SHA="$GITHUB_SHA" --label io.muse2api.service=muse2api-production -t "muse2api-muse2api-production:$GITHUB_SHA" .
+      - name: Synthetic Docker startup, auth, persistence and provenance
+        run: python3 tests/ci_image_smoke.py "muse2api-muse2api-production:$GITHUB_SHA" "$GITHUB_SHA"
+      - name: Export exact tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: docker save "muse2api-muse2api-production:$GITHUB_SHA" | gzip > backend-image.tar.gz
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          name: backend-image-${{ github.sha }}
+          path: backend-image.tar.gz
+          retention-days: 2
+          if-no-files-found: error
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [test, build]
+    runs-on: instabox-medium
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: muse2api-production
+      cancel-in-progress: false
+    env:
+      INSTABOX_API_KEY: ${{ secrets.INSTABOX_API_KEY }}
+      INSTABOX_MACHINE_ID: ${{ vars.INSTABOX_MACHINE_ID }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --global instabox@0.8.310
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-image-${{ github.sha }}
+      - name: API upload and transactional rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$INSTABOX_API_KEY" && test -n "$PUBLIC_URL"
+          test "$INSTABOX_MACHINE_ID" = m_agq7oogrt4nfem7wmwfcgpvanm
+          test "$DEPLOY_PATH" = /data/home/muse2api-production
+          test "$CONTAINER_NAME" = muse2api-production
+          instabox exec "$INSTABOX_MACHINE_ID" -- "mkdir -p '$DEPLOY_PATH/uploads' '$DEPLOY_PATH/bin'"
+          cleanup() {
+            instabox exec "$INSTABOX_MACHINE_ID" -- "rm -f '$DEPLOY_PATH/uploads/$GITHUB_SHA.tar.gz' '$DEPLOY_PATH/bin/release-$GITHUB_SHA.py'" || true
+          }
+          trap cleanup EXIT
+          instabox cp backend-image.tar.gz "$INSTABOX_MACHINE_ID:$DEPLOY_PATH/uploads/$GITHUB_SHA.tar.gz"
+          instabox cp deploy/instabox_release.py "$INSTABOX_MACHINE_ID:$DEPLOY_PATH/bin/release-$GITHUB_SHA.py"
+          instabox exec "$INSTABOX_MACHINE_ID" --timeout 600 -- python3 "$DEPLOY_PATH/bin/release-$GITHUB_SHA.py" --root "$DEPLOY_PATH" --name "$CONTAINER_NAME" --sha "$GITHUB_SHA" --archive "$DEPLOY_PATH/uploads/$GITHUB_SHA.tar.gz" --public-url "$PUBLIC_URL"
+          curl --fail --retry 5 --retry-delay 5 --max-time 30 "$PUBLIC_URL/healthz"
