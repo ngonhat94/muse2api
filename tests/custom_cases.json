@@ -1,5 +1,9 @@
 [
   [
+    "test_video_project_contract.py",
+    []
+  ],
+  [
     "test_video_projects.py",
     []
   ],

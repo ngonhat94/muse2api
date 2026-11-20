@@ -1,0 +1,503 @@
+{
+  "provenance": "Captured from real FastAPI HTTP routes with real auth, existing video worker, injected unpaid generation adapter and real ffmpeg renderer; synthetic isolated identities; URLs expire.",
+  "exchanges": [
+    {
+      "stage": "me",
+      "request": {
+        "method": "GET",
+        "path": "/v1/me",
+        "json": null
+      },
+      "status": 200,
+      "response": {
+        "id": "usr_4de58a00c06de4ab",
+        "label": "Synthetic lifecycle tenant",
+        "role": "user",
+        "capabilities": {
+          "manage_users": false,
+          "global_settings": false,
+          "generation": true,
+          "accounts": true,
+          "tasks": true,
+          "media": true
+        }
+      }
+    },
+    {
+      "stage": "create",
+      "request": {
+        "method": "POST",
+        "path": "/v1/video-projects",
+        "json": {
+          "title": "Synthetic red sky",
+          "idea": "A red sky",
+          "aspect_ratio": "16:9"
+        }
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 1,
+        "script": "",
+        "script_approved": false,
+        "scenes": [],
+        "render": null,
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "manual",
+      "request": {
+        "method": "PATCH",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236",
+        "json": {
+          "revision": 1,
+          "script": "A red sky.",
+          "scenes": [
+            {
+              "order": 0,
+              "narration": "A red sky.",
+              "prompt": "Red sky",
+              "duration": 1
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 2,
+        "script": "A red sky.",
+        "script_approved": false,
+        "scenes": [
+          {
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": false,
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "attempts": [],
+            "selected_attempt_id": null
+          }
+        ],
+        "render": null,
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "approve",
+      "request": {
+        "method": "PATCH",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236",
+        "json": {
+          "revision": 2,
+          "script_approved": true,
+          "scenes": [
+            {
+              "order": 0,
+              "narration": "A red sky.",
+              "prompt": "Red sky",
+              "duration": 1,
+              "approved": true,
+              "id": "f9eb2c30577645bea0f41b09175c490d",
+              "selected_attempt_id": null
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 3,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "attempts": [],
+            "selected_attempt_id": null
+          }
+        ],
+        "render": null,
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "generate",
+      "request": {
+        "method": "POST",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236/scenes/f9eb2c30577645bea0f41b09175c490d/generate",
+        "json": {
+          "revision": 3,
+          "request_id": "45005eab-22da-408d-b7e4-1c2cc6ce72ff"
+        }
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 5,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "attempts": [
+              {
+                "id": "f1321dd4efa24f1e93d042a580daf81c",
+                "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "status": "processing",
+                "media_id": null,
+                "url": null,
+                "error": null
+              }
+            ],
+            "selected_attempt_id": null
+          }
+        ],
+        "render": null,
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "completed",
+      "request": {
+        "method": "GET",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236",
+        "json": null
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 6,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "attempts": [
+              {
+                "id": "f1321dd4efa24f1e93d042a580daf81c",
+                "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "status": "completed",
+                "media_id": "synthetic-contract.mp4",
+                "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY4LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.e602364c1bb442314a2081870b664452d89207051e15ba952816004a121318f1",
+                "error": null
+              }
+            ],
+            "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c"
+          }
+        ],
+        "render": null,
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "select",
+      "request": {
+        "method": "PATCH",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236",
+        "json": {
+          "revision": 6,
+          "scenes": [
+            {
+              "id": "f9eb2c30577645bea0f41b09175c490d",
+              "order": 0,
+              "narration": "A red sky.",
+              "prompt": "Red sky",
+              "duration": 1,
+              "approved": true,
+              "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c"
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 7,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c",
+            "attempts": [
+              {
+                "id": "f1321dd4efa24f1e93d042a580daf81c",
+                "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "status": "completed",
+                "media_id": "synthetic-contract.mp4",
+                "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY4LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.e602364c1bb442314a2081870b664452d89207051e15ba952816004a121318f1",
+                "error": null
+              }
+            ]
+          }
+        ],
+        "render": null,
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "render",
+      "request": {
+        "method": "POST",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236/render",
+        "json": {
+          "revision": 7,
+          "request_id": "26218395-441d-4ae9-8705-0387d93f4213"
+        }
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 9,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c",
+            "attempts": [
+              {
+                "id": "f1321dd4efa24f1e93d042a580daf81c",
+                "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "status": "completed",
+                "media_id": "synthetic-contract.mp4",
+                "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY4LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.e602364c1bb442314a2081870b664452d89207051e15ba952816004a121318f1",
+                "error": null
+              }
+            ]
+          }
+        ],
+        "render": {
+          "id": "7f9e5ffac7b84f1cac6df166ce1d8802",
+          "status": "processing",
+          "url": null,
+          "error": null,
+          "outdated": false
+        },
+        "created_at": 1795186668,
+        "updated_at": 1795186668
+      }
+    },
+    {
+      "stage": "render_completed",
+      "request": {
+        "method": "GET",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236",
+        "json": null
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 10,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c",
+            "attempts": [
+              {
+                "id": "f1321dd4efa24f1e93d042a580daf81c",
+                "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "status": "completed",
+                "media_id": "synthetic-contract.mp4",
+                "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.4151f2d56e2beb8e5842c91d7978af2721efc7372da26d75bf901e04c502dfc9",
+                "error": null
+              }
+            ]
+          }
+        ],
+        "render": {
+          "id": "7f9e5ffac7b84f1cac6df166ce1d8802",
+          "status": "completed",
+          "url": "/v1/media/project_8ac173a1eb514ab6b110dac0154cce2d.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoicHJvamVjdF84YWMxNzNhMWViNTE0YWI2YjExMGRhYzAxNTRjY2UyZC5tcDQiLCJvIjoidXNyXzRkZTU4YTAwYzA2ZGU0YWIiLCJ2IjoxfQ.4c03e1aa9e299dc33d3d925255d8362bc7b094b7d11fee893f6eab43e9a437b4",
+          "error": null,
+          "outdated": false
+        },
+        "created_at": 1795186668,
+        "updated_at": 1795186669
+      }
+    },
+    {
+      "stage": "reload",
+      "request": {
+        "method": "GET",
+        "path": "/v1/video-projects/ffb4114a10cc43098fc5346d7b436236",
+        "json": null
+      },
+      "status": 200,
+      "response": {
+        "title": "Synthetic red sky",
+        "idea": "A red sky",
+        "aspect_ratio": "16:9",
+        "id": "ffb4114a10cc43098fc5346d7b436236",
+        "revision": 10,
+        "script": "A red sky.",
+        "script_approved": true,
+        "scenes": [
+          {
+            "id": "f9eb2c30577645bea0f41b09175c490d",
+            "order": 0,
+            "narration": "A red sky.",
+            "prompt": "Red sky",
+            "duration": 1,
+            "approved": true,
+            "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c",
+            "attempts": [
+              {
+                "id": "f1321dd4efa24f1e93d042a580daf81c",
+                "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "status": "completed",
+                "media_id": "synthetic-contract.mp4",
+                "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.4151f2d56e2beb8e5842c91d7978af2721efc7372da26d75bf901e04c502dfc9",
+                "error": null
+              }
+            ]
+          }
+        ],
+        "render": {
+          "id": "7f9e5ffac7b84f1cac6df166ce1d8802",
+          "status": "completed",
+          "url": "/v1/media/project_8ac173a1eb514ab6b110dac0154cce2d.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoicHJvamVjdF84YWMxNzNhMWViNTE0YWI2YjExMGRhYzAxNTRjY2UyZC5tcDQiLCJvIjoidXNyXzRkZTU4YTAwYzA2ZGU0YWIiLCJ2IjoxfQ.4c03e1aa9e299dc33d3d925255d8362bc7b094b7d11fee893f6eab43e9a437b4",
+          "error": null,
+          "outdated": false
+        },
+        "created_at": 1795186668,
+        "updated_at": 1795186669
+      }
+    },
+    {
+      "stage": "list",
+      "request": {
+        "method": "GET",
+        "path": "/v1/video-projects",
+        "json": null
+      },
+      "status": 200,
+      "response": {
+        "projects": [
+          {
+            "title": "Synthetic red sky",
+            "idea": "A red sky",
+            "aspect_ratio": "16:9",
+            "id": "ffb4114a10cc43098fc5346d7b436236",
+            "revision": 10,
+            "script": "A red sky.",
+            "script_approved": true,
+            "scenes": [
+              {
+                "id": "f9eb2c30577645bea0f41b09175c490d",
+                "order": 0,
+                "narration": "A red sky.",
+                "prompt": "Red sky",
+                "duration": 1,
+                "approved": true,
+                "selected_attempt_id": "f1321dd4efa24f1e93d042a580daf81c",
+                "attempts": [
+                  {
+                    "id": "f1321dd4efa24f1e93d042a580daf81c",
+                    "task_id": "f1321dd4efa24f1e93d042a580daf81c",
+                    "status": "completed",
+                    "media_id": "synthetic-contract.mp4",
+                    "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.4151f2d56e2beb8e5842c91d7978af2721efc7372da26d75bf901e04c502dfc9",
+                    "error": null
+                  }
+                ]
+              }
+            ],
+            "render": {
+              "id": "7f9e5ffac7b84f1cac6df166ce1d8802",
+              "status": "completed",
+              "url": "/v1/media/project_8ac173a1eb514ab6b110dac0154cce2d.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoicHJvamVjdF84YWMxNzNhMWViNTE0YWI2YjExMGRhYzAxNTRjY2UyZC5tcDQiLCJvIjoidXNyXzRkZTU4YTAwYzA2ZGU0YWIiLCJ2IjoxfQ.4c03e1aa9e299dc33d3d925255d8362bc7b094b7d11fee893f6eab43e9a437b4",
+              "error": null,
+              "outdated": false
+            },
+            "created_at": 1795186668,
+            "updated_at": 1795186669
+          }
+        ]
+      }
+    }
+  ],
+  "media_gets": [
+    {
+      "stage": "take",
+      "url": "/v1/media/synthetic-contract.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoic3ludGhldGljLWNvbnRyYWN0Lm1wNCIsIm8iOiJ1c3JfNGRlNThhMDBjMDZkZTRhYiIsInYiOjF9.4151f2d56e2beb8e5842c91d7978af2721efc7372da26d75bf901e04c502dfc9",
+      "status": 200,
+      "content_type": "video/mp4",
+      "bytes": 2277,
+      "sha256": "eaece938b2251c6c84ca5dd17bc0896843ba54721c46077c750ad6d1aa02ac2f"
+    },
+    {
+      "stage": "render",
+      "url": "/v1/media/project_8ac173a1eb514ab6b110dac0154cce2d.mp4?cap=eyJlIjoxNzk1MTg2OTY5LCJuIjoicHJvamVjdF84YWMxNzNhMWViNTE0YWI2YjExMGRhYzAxNTRjY2UyZC5tcDQiLCJvIjoidXNyXzRkZTU4YTAwYzA2ZGU0YWIiLCJ2IjoxfQ.4c03e1aa9e299dc33d3d925255d8362bc7b094b7d11fee893f6eab43e9a437b4",
+      "status": 200,
+      "content_type": "video/mp4",
+      "bytes": 4292,
+      "sha256": "c93ffbdd569461b9850b1a0644869f4906a753688835a3118a7c2dc7014208d7"
+    }
+  ]
+}

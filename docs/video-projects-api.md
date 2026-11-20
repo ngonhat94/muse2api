@@ -2,6 +2,22 @@
 
 All routes require the existing bearer authentication. Projects, tasks, and media are tenant-owned. Base: `/v1/video-projects`.
 
+`GET /v1/me` explicitly returns `capabilities.generation: true` for authenticated normal tenants and administrators. This is permission, not provider readiness: account availability, quotas and request limits are checked at submission. Disabled/revoked/invalid keys get HTTP 401, never a successful capability response.
+
+## Executed shared HTTP contract
+
+`docs/verification-logs/video-projects-http-contract.json` is generated from actual FastAPI TestClient HTTP requests (no auth overrides), not hand-written response data. It captures me/create/manual script+scene/approve/generate/completed/select/render/render_completed/reload/list. Existing video workers run with only the external generation adapter replaced by an unpaid synthetic local FFmpeg clip; render runs the real renderer and signed media URLs are downloaded without bearer headers. `media_gets` records actual response status, content type, byte count and SHA-256. Credentials are omitted. Random IDs, timestamps and signed URLs are intentionally actual output; URLs expire and cannot be reused against another instance.
+
+Regenerate from repository root with existing dependencies and ffmpeg/ffprobe installed:
+
+```sh
+TMPDIR=$PWD/tests MUSE2API_TEST_TMP=$PWD/tests MUSE2API_CONTRACT_EXPORT=$PWD/docs/verification-logs/video-projects-http-contract.json python tests/run_backend_offline.py tests/test_video_project_contract.py -v
+```
+
+The offline guard rejects network sockets, requests, real engine generation and unrelated subprocesses. Frontend contract harnesses can consume each `exchanges[].response` alongside its recorded method/path/request body. This artifact proves backend HTTP behavior; frontend consumption still needs its own paired verification. CI installs FFmpeg and runs this contract in the guarded suite. Docker image smoke explicitly imports `app` and `video_projects` and creates/reloads a project through the running image's HTTP routes. `Dockerfile` uses `COPY *.py`, so new root modules are packaged automatically.
+
+## Routes
+
 - `GET /` → `{ "projects": [project, ...] }` (also supported without trailing slash).
 - `POST /` with `title`, `idea`, `aspect_ratio` (`16:9` or `9:16`) → full project.
 - `GET /:id` → refreshed project, reconciled jobs and renewed signed media URLs.

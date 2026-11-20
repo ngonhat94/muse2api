@@ -64,10 +64,22 @@ def main(image, sha):
                 raise AssertionError('unauthenticated API access allowed')
             except urllib.error.HTTPError as error:
                 assert error.code == 401
-            assert request('/v1/me', key)['role'] == 'admin'
+            principal = request('/v1/me', key)
+            assert principal['role'] == 'admin'
+            assert principal['capabilities']['generation'] is True
+            assert request('/v1/video-projects', key) == {'projects': []}
+            payload = json.dumps({'title': 'Image contract', 'idea': 'Synthetic sky', 'aspect_ratio': '16:9'}).encode()
+            create = urllib.request.Request(f'http://127.0.0.1:{port}/v1/video-projects', data=payload,
+                                            headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+            with urllib.request.urlopen(create, timeout=10) as response:
+                project = json.load(response)
+            assert request('/v1/video-projects/' + project['id'], key)['title'] == 'Image contract'
             assert request('/readyz', key)['status'] == 'no_account'
             # Custom security modules must import from inside the actual image.
-            release.docker('exec', name, 'python', '-c', 'import tenant,authority,protection,idempotency,operations,client_config')
+            # The serving app has already imported app/project routes above.
+            # Do not import app in a second process: its exclusive runtime lock
+            # deliberately rejects a second app instance sharing the same data.
+            release.docker('exec', name, 'python', '-c', 'import video_projects,tenant,authority,protection,idempotency,operations,client_config')
             (root / 'data/synthetic-sentinel').write_text('persistent')
             archive = upload(good, sha)
             release.release(root, name, sha, archive, port, '')
