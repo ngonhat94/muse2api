@@ -32,6 +32,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
   def guarded_popen(args, *a, **kw):
    if isinstance(args, list) and args and args[0] == sys.executable and target.endswith('test_tenant_review_blockers.py'):
     return real_popen(args, *a, **kw)
+   if target.endswith('test_video_projects.py') and isinstance(args, list) and args and args[0] in ('ffmpeg', 'ffprobe'):
+    return real_popen(args, *a, **kw)
    return deny()
   stack.enter_context(patch.object(subprocess,'Popen',guarded_popen))
   sys.argv=[target]+sys.argv[2:]
