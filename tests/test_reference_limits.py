@@ -83,6 +83,13 @@ with tempfile.TemporaryDirectory() as home:
 
 print("PASS: reference count, item, conflict, MIME and byte limits")
 
+# Endpoint decorators now read durable authority state on every admission. Keep
+# this fixture's home alive through all endpoint calls, not the expired block above.
+endpoint_home = tempfile.TemporaryDirectory()
+import atexit
+atexit.register(endpoint_home.cleanup)
+app = import_app(endpoint_home.name)
+
 
 
 class FakeJSONRequest:

@@ -162,8 +162,16 @@ with tempfile.TemporaryDirectory() as home:
 
 
     # 页面把刚上传的素材渲染成"结果"时，按哈希忽略并继续等待真正的成品
-    media = Path(home, "media")
+    # Production output requires captured owner authority and the quota-aware writer.
+    # Match test_reference_media_hardening; never restore direct filesystem fallback.
+    from config import Config
+    from store import Store
+    media_store = Store(Config(base_dir=str(Path(home) / "synthetic-store")))
+    media = Path(media_store.cfg.media_dir)
     guard = app.MuseEngine(SimpleNamespace(profile_dir=home, media_dir=str(media)))
+    guard.media_writer = media_store.write_media
+    guard.media_limits = media_store.storage_limits
+    guard._ensure_local().media_owner = "admin"
     upload_bytes, result_bytes = mp4(4), mp4(5) + b"generated"
     hits = iter([{"src": "poster", "vSrc": "blob:upload", "hasVideo": True, "w": 9, "h": 9},
                  {"src": "poster2", "vSrc": "blob:result", "hasVideo": True, "w": 9, "h": 9}])

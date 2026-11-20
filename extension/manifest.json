@@ -1,22 +1,14 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "1.0.3",
+  "version": "1.1.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0S+575N5m66U31d7jC7aaUA4xEsFguJG/xTZncwsV+WAhl2GA4m5J4KnRNyysZ4zPbqhOUMg7np0BeeX2qGAsXV7899wrTmZufZuAjmw5SjnaCAwQoDJ0ppesqbemNOCJ1ycSY3vzdspySXt1uMkka8fztopnKIJw8UMRr/W/LBzp9q44EXV71yELo87jt++i8VjbxGE7SAomRDx0xTWW3efA/I8jfeITzz/KjecGO3YhRwZSKGVs7b1kOiYmBJepBBZpT96BWPzietjzzTqykZpnSfwxm8WpyTumj9lz+Q53JRmGDDzhSVT+DTIoVObpJ5XNeuf5G73ZeEF1wqeNQIDAQAB",
   "description": "__MSG_extDesc__",
   "default_locale": "zh_CN",
-  "permissions": [
-    "cookies",
-    "storage",
-    "activeTab"
-  ],
-  "host_permissions": [
-    "https://muse.ai/*",
-    "https://*.muse.ai/*",
-    "http://*/*",
-    "https://*/*"
-  ],
-  "action": {
-    "default_title": "__MSG_extName__",
-    "default_popup": "popup.html"
-  }
+  "permissions": ["cookies", "storage", "activeTab"],
+  "host_permissions": ["https://muse.ai/*", "https://*.muse.ai/*", "https://muse.dntrip.xyz/*", "https://muapp-3d6.pages.dev/*", "https://18610-agq6gp235jkrlip6hyszdk5ctm.instabox.tech/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "externally_connectable": {"matches": ["https://muapp-3d6.pages.dev/*", "https://muse.dntrip.xyz/*"]},
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "__MSG_extName__", "default_popup": "popup.html"}
 }

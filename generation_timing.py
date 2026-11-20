@@ -35,25 +35,26 @@ class QueuePolicy:
 
 class TaskTiming:
     """Store queue, generation and total durations with consistent meanings."""
-    def __init__(self, store, task_id):
+    def __init__(self, store, task_id, owner_id=None):
         self.store, self.task_id = store, task_id
+        self.owner = {} if owner_id is None else {"owner_id": owner_id}
         self.created = time.monotonic()
         self.queue_elapsed = 0.0
         self.started = False
 
     def queued(self, seconds):
         self.queue_elapsed = seconds
-        self.store.update_task(self.task_id, queue_elapsed=round(seconds, 1))
+        self.store.update_task(self.task_id, **self.owner, queue_elapsed=round(seconds, 1))
 
     def acquired(self):
         self.started = True
-        self.store.update_task(self.task_id, status="processing", started_at=time.time())
+        self.store.update_task(self.task_id, **self.owner, status="processing", started_at=time.time())
 
     def account(self, aid, attempt):
-        self.store.update_task(self.task_id, account=aid, attempt=attempt)
+        self.store.update_task(self.task_id, **self.owner, account=aid, attempt=attempt)
 
     def error(self, message):
-        self.store.update_task(self.task_id, last_error=message)
+        self.store.update_task(self.task_id, **self.owner, last_error=message)
 
     def finish(self):
         total = time.monotonic() - self.created

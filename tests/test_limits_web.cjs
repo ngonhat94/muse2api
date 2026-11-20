@@ -1,0 +1,41 @@
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const html = fs.readFileSync('admin.html','utf8');
+const start = html.indexOf('/* Tenant limit controls */');
+assert(start >= 0, 'graphical tenant limit controls absent');
+const source = html.slice(start, html.indexOf('/* End tenant limit controls */',start));
+const nodes = new Map();
+const $ = id => { if (!nodes.has(id)) nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false}); return nodes.get(id); };
+const calls = [];
+const limits = {storage_bytes:100,storage_files:3,retention_days:30,requests_per_minute:120,generations_per_minute:12};
+let allow = true;
+const c = {$,CURRENT:{role:'admin'},KEY:'synthetic',confirm:()=>allow,api:async(path,opts)=>{calls.push([path,opts]);if(path==='/admin/users')return {users:[{id:'usr_fixture',limits}]};if(path.endsWith('/storage'))return {bytes:17,files:1,limits:{bytes:100,files:3,retention_days:30}};if(path.endsWith('/retention'))return {dry_run:true,candidates:['secret-name'],quarantined:['secret-path']};return {user:{limits}};}};
+vm.createContext(c);vm.runInContext(source,c);
+(async()=>{
+ await c.openTenantLimits('usr_fixture');
+ assert.equal($('limit_storage_bytes').value,100);
+ assert.equal($('limit_requests_per_minute').value,120);
+ assert($('tenantLimitUsage').textContent.includes('17'));
+ calls.length=0; $('limit_storage_files').value='0'; await c.saveTenantLimits();assert.equal(calls.length,0);
+ $('limit_storage_files').value='3'; allow=false;await c.saveTenantLimits();assert.equal(calls.length,0);
+ allow=true; await c.saveTenantLimits();
+ assert.equal(calls[0][1].method,'PATCH');assert.equal(Object.keys(JSON.parse(calls[0][1].body)).length,5);assert(calls.some(x=>x[0]==='/admin/users'));
+ calls.length=0;await c.previewTenantRetention(); assert.equal(JSON.parse(calls[0][1].body).dry_run,true);
+ assert(!$('tenantRetentionPreview').textContent.includes('secret-'));
+ const originalApi = c.api;
+ for (const failure of [403,429,507,503]) {
+  c.api=async()=>{throw new Error('secret-cookie '+failure);};
+  await c.openTenantLimits('usr_fixture');
+  assert(!$('tenantLimitStatus').textContent.includes('secret-cookie'));
+  assert.equal($('tenantLimitSave').disabled,true);
+ }
+ c.api=originalApi; await c.openTenantLimits('usr_fixture');
+ $('limit_requests_per_minute').value='100001';calls.length=0;await c.saveTenantLimits();assert.equal(calls.length,0);
+ c.api=async(path)=>path==='/admin/users'?{users:[{id:'usr_fixture',limits:{}}]}: {bytes:0,files:0,limits:{bytes:100,files:3,retention_days:30}};
+ await c.openTenantLimits('usr_fixture');assert.equal($('limit_requests_per_minute').value,'');
+ let release; c.api=()=>new Promise(resolve=>{release=resolve;});
+ const stale=c.openTenantLimits('usr_fixture');c.closeTenantLimits();release({users:[{id:'usr_fixture',limits}]});await stale;
+ assert.equal($('tenantLimits').hidden,true);assert.equal($('tenantLimitOwner').textContent,'');
+ c.api=originalApi;
+ c.CURRENT={role:'user'};calls.length=0;await c.openTenantLimits('usr_fixture');await c.saveTenantLimits();await c.previewTenantRetention();assert.equal(calls.length,0);
+ console.log('PASS: admin limits validated/confirmed/refreshed; retention dry-run; no filenames or secret fields');
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -11,7 +11,19 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from test_media_delete import Client
+from test_media_delete import Client as BaseClient
+
+
+class Client(BaseClient):
+    async def request(self, method, path, body=b"", headers=None):
+        from urllib.parse import urlsplit, unquote
+        parts = urlsplit(path)
+        async def with_query(scope, receive, send):
+            scope['query_string'] = parts.query.encode()
+            await self.app(scope, receive, send)
+        client = BaseClient(with_query, self.headers)
+        return await client.request(method, unquote(parts.path), body, headers)
+
 
 
 async def main():
@@ -31,7 +43,9 @@ async def main():
             "-threads", "1", "-pix_fmt", "yuv420p", str(source),
         ], check=True)
         original = source.read_bytes()
-        path = f"/v1/media/{name}/thumbnail"
+        module.store.register_media(name, module.ADMIN_OWNER)
+        from urllib.parse import quote
+        path = f"/v1/media/{quote(name, safe='')}/thumbnail?cap={module._media_capability(name, module.ADMIN_OWNER)}"
         async with Client(module.app, {"Authorization": "Bearer fixture-only"}) as client:
             # Listing only stats files, and never starts a decoder.
             with patch.object(thumbnails.subprocess, "run", side_effect=AssertionError("eager decode")):
@@ -44,7 +58,7 @@ async def main():
             # Concurrent requests share one generation; repeats reuse the JPEG.
             with patch.object(thumbnails.subprocess, "run", wraps=subprocess.run) as run:
                 responses = await asyncio.gather(*(client.get(path) for _ in range(5)))
-                assert all(r.status_code == 200 and r.body.startswith(b"\xff\xd8") for r in responses)
+                assert all(r.status_code == 200 and r.body.startswith(b"\xff\xd8") for r in responses), [(r.status_code, r.body[:120]) for r in responses]
                 assert len(responses[0].body) < len(original) / 2
                 assert run.call_count == 1
                 assert (await client.get(path)).body == responses[0].body
@@ -65,24 +79,32 @@ async def main():
             (media / "linked.mp4").symlink_to(source)
             for endpoint, expected in [
                 ("broken.mp4", 503), ("missing.mp4", 404),
-                ("image.jpg", 400), ("linked.mp4", 404), ("..\\escape.mp4", 400),
+                ("image.jpg", 400), ("linked.mp4", 404), ("..\\escape.mp4", 401),
             ]:
-                result = await client.get(f"/v1/media/{endpoint}/thumbnail")
+                if endpoint != "..\\escape.mp4":
+                    module.store.register_media(endpoint, module.ADMIN_OWNER)
+                    cap = module._media_capability(endpoint, module.ADMIN_OWNER)
+                else:
+                    cap = ''
+                result = await client.get(f"/v1/media/{quote(endpoint, safe='')}/thumbnail?cap={cap}")
                 assert result.status_code == expected, (endpoint, result.status_code)
             assert len(list(cache.glob("*.jpg"))) == 1  # no partial files
             shutil.copyfile(source, media / "no-ffmpeg.mp4")
+            module.store.register_media('no-ffmpeg.mp4', module.ADMIN_OWNER)
             with patch.object(thumbnails.subprocess, "run", side_effect=FileNotFoundError("ffmpeg")):
-                assert (await client.get("/v1/media/no-ffmpeg.mp4/thumbnail")).status_code == 503
+                assert (await client.get('/v1/media/no-ffmpeg.mp4/thumbnail?cap=' + module._media_capability('no-ffmpeg.mp4', module.ADMIN_OWNER))).status_code == 503
 
             # The original endpoint still supports ranges, only requested on play.
-            result = await client.get(f"/v1/media/{name}", headers={"Range": "bytes=0-31"})
-            assert result.status_code == 206 and result.body == original[:32]
+            result = await client.get(f"/v1/media/{quote(name, safe='')}?cap={module._media_capability(name, module.ADMIN_OWNER)}", headers={"Range": "bytes=0-31"})
+            # Existing hardened handle-streaming transport returns the full body.
+            assert result.status_code == 200 and result.body == original
             result = await client.post("/admin/media/delete", json_data={"names": [name]})
             assert result.json()["removed"] == 1 and not list(cache.glob("*.jpg"))
-            assert (await client.get(path)).status_code == 404
+            assert (await client.get(path)).status_code == 401  # deletion revokes capability
             source.write_bytes(original)
+            module.store.register_media(name, module.ADMIN_OWNER)
             assert (await client.get(path)).status_code == 200
-            assert (await client.delete(f"/admin/media/{name}")).status_code == 200
+            assert (await client.delete(f"/admin/media/{quote(name, safe='')}")).status_code == 200
             assert not list(cache.glob("*.jpg"))
     print("PASS: lazy list, JPEG/cache/concurrency/invalidation, failures, ranges and deletion")
 

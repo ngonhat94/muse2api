@@ -1,0 +1,47 @@
+[
+  {
+    "script": "test_media_boundary",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_protection_review_fixes",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_data_protection",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_tenant_review_blockers",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_reference_admission",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_multitenant_security",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_async_images",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_media_delete",
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "script": "test_reference_media_hardening",
+    "exit_code": 0,
+    "output": ""
+  }
+]

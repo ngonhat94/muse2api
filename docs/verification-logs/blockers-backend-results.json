@@ -1,0 +1,47 @@
+[
+  {
+    "script": "test_tenant_review_blockers",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_tenant_review_blockers.log"
+  },
+  {
+    "script": "test_multitenant_security",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_multitenant_security.log"
+  },
+  {
+    "script": "test_concurrency",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_concurrency.log"
+  },
+  {
+    "script": "test_account_proxy_routing",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_account_proxy_routing.log"
+  },
+  {
+    "script": "test_keepalive_scheduling",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_keepalive_scheduling.log"
+  },
+  {
+    "script": "test_session_health",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_session_health.log"
+  },
+  {
+    "script": "test_local_update_safety",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_local_update_safety.log"
+  },
+  {
+    "script": "test_cookie_requirements",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_cookie_requirements.log"
+  },
+  {
+    "script": "test_refusal_rotation",
+    "returncode": 0,
+    "log": "docs/verification-logs/blockers-test_refusal_rotation.log"
+  }
+]

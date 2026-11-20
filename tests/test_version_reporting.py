@@ -48,7 +48,7 @@ class VersionReportingTests(unittest.TestCase):
              patch.object(app,'_ensure_git_repo'),patch.object(app,'_git',return_value=broken), \
              patch.object(app,'_installed_sha_file',return_value=str(marker)),patch('requests.get',return_value=SimpleNamespace(status_code=503)):
             with self.assertRaises(app.HTTPException) as cm:app._upgrade_from_github_sync()
-        self.assertEqual(cm.exception.status_code,502)
+        self.assertEqual(cm.exception.status_code,409)  # tenant-aware checkout forbids built-in upgrades
         self.assertFalse(marker.exists())
 
 

@@ -1,0 +1,195 @@
+[
+  {
+    "script": "test_tenant_review_blockers",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_tenant_review_blockers.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_tenant_review_blockers.py"
+    ]
+  },
+  {
+    "script": "test_multitenant_security",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_multitenant_security.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_multitenant_security.py"
+    ]
+  },
+  {
+    "script": "test_account_proxy",
+    "arguments": [
+      "--offline"
+    ],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_account_proxy.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_account_proxy.py",
+      "--offline"
+    ]
+  },
+  {
+    "script": "test_account_proxy_routing",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_account_proxy_routing.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_account_proxy_routing.py"
+    ]
+  },
+  {
+    "script": "test_proxy_status_receipt",
+    "arguments": [
+      "--backend-only"
+    ],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_proxy_status_receipt.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_proxy_status_receipt.py",
+      "--backend-only"
+    ]
+  },
+  {
+    "script": "test_keepalive_scheduling",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_keepalive_scheduling.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_keepalive_scheduling.py"
+    ]
+  },
+  {
+    "script": "test_session_health",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_session_health.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_session_health.py"
+    ]
+  },
+  {
+    "script": "test_concurrency",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_concurrency.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_concurrency.py"
+    ]
+  },
+  {
+    "script": "test_local_update_safety",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_local_update_safety.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_local_update_safety.py"
+    ]
+  },
+  {
+    "script": "test_cookie_requirements",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_cookie_requirements.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_cookie_requirements.py"
+    ]
+  },
+  {
+    "script": "test_refusal_rotation",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_refusal_rotation.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_refusal_rotation.py"
+    ]
+  },
+  {
+    "script": "test_ref_image_safety",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_ref_image_safety.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_ref_image_safety.py"
+    ]
+  },
+  {
+    "script": "test_reference_media_hardening",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_reference_media_hardening.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_reference_media_hardening.py"
+    ]
+  },
+  {
+    "script": "test_reference_admission",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_reference_admission.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_reference_admission.py"
+    ]
+  },
+  {
+    "script": "test_reference_media",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_reference_media.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_reference_media.py"
+    ]
+  },
+  {
+    "script": "test_reference_limits",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_reference_limits.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_reference_limits.py"
+    ]
+  },
+  {
+    "script": "test_media_delete",
+    "arguments": [],
+    "returncode": 0,
+    "log": "docs/verification-logs/reference-test_media_delete.log",
+    "command": [
+      "/Users/nhatngo/.hermes/cache/scratch/muse2api-update-20261114-171700/test-venv/bin/python",
+      "tests/run_backend_offline.py",
+      "tests/test_media_delete.py"
+    ]
+  }
+]

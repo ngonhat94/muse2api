@@ -1,0 +1,67 @@
+[
+  {
+    "script": "test_protection_review_fixes.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_protection_review_fixes.log"
+  },
+  {
+    "script": "test_data_protection.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_data_protection.log"
+  },
+  {
+    "script": "test_tenant_review_blockers.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_tenant_review_blockers.log"
+  },
+  {
+    "script": "test_multitenant_security.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_multitenant_security.log"
+  },
+  {
+    "script": "test_reference_admission.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_reference_admission.log"
+  },
+  {
+    "script": "test_async_images.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_async_images.log"
+  },
+  {
+    "script": "test_concurrency.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_concurrency.log"
+  },
+  {
+    "script": "test_media_delete.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_media_delete.log"
+  },
+  {
+    "script": "test_account_proxy_routing.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_account_proxy_routing.log"
+  },
+  {
+    "script": "test_session_health.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_session_health.log"
+  },
+  {
+    "script": "test_refusal_rotation.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_refusal_rotation.log"
+  },
+  {
+    "script": "test_reference_media_hardening.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_reference_media_hardening.log"
+  },
+  {
+    "script": "test_local_update_safety.py",
+    "exit_code": 0,
+    "log": "docs/verification-logs/protection-review-fixes-test_local_update_safety.log"
+  }
+]

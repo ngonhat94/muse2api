@@ -125,6 +125,8 @@ class Config:
     keepalive_disabled_accounts: bool = field(
         default_factory=lambda: _env("MUSE2API_KEEPALIVE_DISABLED_ACCOUNTS", "0").strip() != "0")
 
+    desktop: bool = field(default_factory=lambda: _env("MUSE2API_DESKTOP", "0") == "1")
+
     @property
     def data_dir(self) -> str:
         return os.path.join(self.base_dir, "data")
@@ -149,6 +151,14 @@ class Config:
     @property
     def tasks_file(self) -> str:
         return os.path.join(self.data_dir, "tasks.json")
+
+    @property
+    def users_file(self) -> str:
+        return os.path.join(self.data_dir, "users.json")
+
+    @property
+    def media_index_file(self) -> str:
+        return os.path.join(self.data_dir, "media-index.json")
 
     def ensure_dirs(self):
         for d in (self.base_dir, self.data_dir, self.media_dir, self.download_dir,
