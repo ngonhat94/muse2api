@@ -1,5 +1,9 @@
 [
   [
+    "test_video_projects.py",
+    []
+  ],
+  [
     "test_generation_queue.py",
     []
   ],
