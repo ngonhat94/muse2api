@@ -91,7 +91,11 @@ def _json(raw):
                 raise ValueError('duplicate JSON key')
             result[key] = value
         return result
-    return json.loads(raw, object_pairs_hook=unique)
+    try:
+        return json.loads(raw, object_pairs_hook=unique)
+    except RecursionError:
+        # Python 3.11's decoder raises before schema validation on deep input.
+        raise ValueError('JSON nesting exceeds safe limit') from None
 
 
 def _allowed(name):

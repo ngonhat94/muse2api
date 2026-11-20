@@ -32,7 +32,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制代码与必要目录
-COPY admin.html app.py cdp.py config.py engine.py store.py proxy.py generation_timing.py thumbnails.py version.json ./
+# Include custom authorization, tenant, ledger and operations modules too.
+COPY *.py admin.html version.json ./
 COPY deploy/ ./deploy/
 COPY extension/ ./extension/
 COPY tools/ ./tools/
