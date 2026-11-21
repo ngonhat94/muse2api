@@ -53,6 +53,10 @@ class Submission(Revision):
     request_id: str
 
 
+class PlanningSubmission(Revision):
+    request_id: str | None = None
+
+
 def validated(model, data):
     try:
         return model.model_validate(data).model_dump(exclude_none=True)
@@ -138,6 +142,16 @@ class ProjectService:
         self.active = set()
         self.threads = []
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {'projects': {}, 'requests': {}}
+        dirty = False
+        for p in self.data['projects'].values():
+            planning = p.get('planning')
+            if planning and planning['status'] in ('queued', 'processing'):
+                planning.update(status='unknown', stage='unknown',
+                                error='Planning interrupted; no automatic resubmission.', updated_at=int(time.time()))
+                self.changed(p)
+                dirty = True
+        if dirty:
+            self.save()
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,7 +203,46 @@ class ProjectService:
         if p['revision'] != revision:
             raise HTTPException(409, 'Stale project revision; refresh before editing')
 
+    def request_status(self, owner, pid, request_id):
+        with self.lock:
+            p = self.owned(owner, pid)
+            try:
+                rid = str(uuid.UUID(request_id))
+            except (ValueError, AttributeError):
+                raise HTTPException(422, 'request_id must be a UUID') from None
+            receipt = self.data['requests'].get(owner + ':' + rid)
+            if receipt and receipt['project'] != pid:
+                receipt = None
+            action = receipt['action'].split(':')[0] if receipt else None
+            sid = receipt['action'].split(':', 1)[1] if receipt and action == 'generate' else None
+            state = self.receipt_state(p, receipt) if receipt else {}
+            return dict(request_id=request_id, action=action, accepted=bool(receipt),
+                        status=state.get('status', 'unknown') if receipt else 'not_found',
+                        scene_id=sid, task_id=receipt['id'] if receipt else None,
+                        error=state.get('error'))
+
+    @staticmethod
+    def receipt_state(p, receipt):
+        action, _, sid = receipt['action'].partition(':')
+        if action == 'generate':
+            state = next((a for s in p['scenes'] if s['id'] == sid
+                          for a in s['attempts'] if a['id'] == receipt['id']), None)
+        else:
+            state = p.get('planning' if action == 'plan' else 'render')
+            if state and state['id'] != receipt['id']:
+                state = None
+        if state:
+            return state
+        previous = receipt.get('state', {'status': 'unknown', 'error': None})
+        if previous.get('status') in ('queued', 'processing'):
+            return {'status': 'unknown', 'error': 'Referenced work is no longer observable; no automatic resubmission.'}
+        return previous
+
     def changed(self, p):
+        for receipt in self.data['requests'].values():
+            if receipt['project'] == p['id']:
+                state = self.receipt_state(p, receipt)
+                receipt['state'] = {k: state.get(k) for k in ('status', 'error')}
         p['revision'] += 1
         p['updated_at'] = int(time.time())
         self.save()
@@ -275,7 +328,79 @@ class ProjectService:
                 self.changed(p)
             return self.public(p)
 
-    async def plan(self, owner, pid, request, planner):
+    async def plan(self, owner, pid, request, planner, preflight=lambda: None):
+        if request.get('request_id') is None:
+            preflight()
+            return await self.legacy_plan(owner, pid, request, planner)
+        with self.lock:
+            p = self.owned(owner, pid)
+            key, replay = self.receipt(owner, pid, 'plan', request)
+            if replay:
+                return self.public(p)
+            self.revision(p, request['revision'])
+            if p.get('planning', {}).get('status') in ('queued', 'processing'):
+                raise HTTPException(409, 'Planning already active')
+            if sum(x.get('planning', {}).get('status') in ('queued', 'processing')
+                   for x in self.data['projects'].values()) >= 8:
+                raise HTTPException(429, 'Planning capacity reached')
+            preflight()
+            now = int(time.time())
+            jid = uuid.uuid4().hex
+            p['planning'] = dict(id=jid, request_id=request['request_id'], status='queued',
+                                 stage='queued', error=None, started_at=now, updated_at=now)
+            self.data['requests'][key] = {'project': pid, 'action': 'plan', 'id': jid}
+            self.changed(p)
+            revision = p['revision']
+            snapshot = self.public(p)
+            accepted = self.public(p)
+        def transition(status, stage, error=None):
+            current = self.owned(owner, pid)
+            current['planning'].update(status=status, stage=stage, error=error, updated_at=int(time.time()))
+            self.changed(current)
+            return current
+        def worker():
+            import asyncio
+            try:
+                with self.lock:
+                    transition('processing', 'planning')
+                text = asyncio.run(planner(snapshot))
+                with self.lock:
+                    current = transition('processing', 'validating')
+                    # Only our own factual progress increments are permitted.
+                    if current['revision'] != revision + 2:
+                        raise HTTPException(409, 'Project edited during planning')
+                    fields = self.draft(text, current['revision'])
+                    self.patch(owner, pid, fields)
+                    transition('completed', 'completed')
+            except Exception as exc:
+                with self.lock:
+                    conflict = isinstance(exc, HTTPException) and exc.status_code == 409
+                    transition('failed', 'failed', 'Project edited during planning; draft not applied.' if conflict else
+                               'Planning unavailable or invalid draft; edit manually or authorize a new request.')
+        try:
+            thread = threading.Thread(target=worker, daemon=True)
+            self.threads = [t for t in self.threads if t.is_alive()]
+            self.threads.append(thread)
+            thread.start()
+        except BaseException:
+            with self.lock:
+                transition('unknown', 'unknown', 'Planning admission interrupted; no automatic resubmission.')
+        return accepted
+
+    @staticmethod
+    def draft(text, revision):
+        if not isinstance(text, str) or len(text) > 64000:
+            raise ValueError('Invalid planner response')
+        draft = json.loads(text)
+        if set(draft) != {'script', 'scenes'} or not draft['script'].strip() or not draft['scenes']:
+            raise ValueError('Invalid draft')
+        fields = validated(ProjectPatch, dict(draft, revision=revision))
+        for scene in fields['scenes']:
+            if scene.get('id') or scene.get('selected_attempt_id') or scene.get('approved'):
+                raise ValueError('Planner must return an unapproved draft')
+        return fields
+
+    async def legacy_plan(self, owner, pid, request, planner):
         fields = validated(Revision, request)
         with self.lock:
             p = self.owned(owner, pid)
