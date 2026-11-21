@@ -74,6 +74,40 @@ def main(image, sha):
             with urllib.request.urlopen(create, timeout=10) as response:
                 project = json.load(response)
             assert request('/v1/video-projects/' + project['id'], key)['title'] == 'Image contract'
+            assert principal['capabilities']['video_projects'] is True
+            # Real packaged FFmpeg -> HTTP upload -> durable job -> import.
+            video = subprocess.check_output(['docker', 'exec', name, 'ffmpeg', '-v', 'error',
+                '-f', 'lavfi', '-i', 'color=red:s=160x90:r=10:d=2', '-threads', '1',
+                '-c:v', 'libx264', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov', 'pipe:1'])
+            boundary = 'synthetic-reference-boundary'
+            body = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="demo.mp4"\r\n'
+                    'Content-Type: video/mp4\r\n\r\n').encode() + video + f'\r\n--{boundary}--\r\n'.encode()
+            upload_request = urllib.request.Request(f'http://127.0.0.1:{port}/v1/reference-videos', data=body,
+                headers={'Authorization': 'Bearer '+key, 'Content-Type': 'multipart/form-data; boundary='+boundary})
+            with urllib.request.urlopen(upload_request, timeout=10) as response:
+                assert response.status == 202
+                reference = json.load(response)
+            import time
+            for _ in range(100):
+                reference = request('/v1/reference-videos/'+reference['id'], key)
+                if reference['status'] not in ('queued', 'processing'):
+                    break
+                time.sleep(.1)
+            assert reference['status'] == 'completed', reference
+            assert len(reference['shots']) == 1
+            thumbnail_request = urllib.request.Request(f"http://127.0.0.1:{port}"+reference['shots'][0]['thumbnail_path'],
+                                                       headers={'Authorization': 'Bearer '+key})
+            with urllib.request.urlopen(thumbnail_request, timeout=10) as response:
+                assert response.read().startswith(b'\xff\xd8')
+            import_payload = json.dumps(dict(request_id=str(uuid.uuid4()), shot_ids=[reference['shots'][0]['id']])).encode()
+            def import_reference():
+                req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/reference-videos/{reference['id']}/import",
+                    data=import_payload, headers={'Authorization': 'Bearer '+key, 'Content-Type': 'application/json'})
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    return json.load(response)
+            imported = import_reference()
+            assert not imported['script_approved'] and not imported['scenes'][0]['approved']
+            assert not imported['scenes'][0]['attempts']
             assert request('/readyz', key)['status'] == 'no_account'
             # Custom security modules must import from inside the actual image.
             # The serving app has already imported app/project routes above.
@@ -85,6 +119,8 @@ def main(image, sha):
             release.release(root, name, sha, archive, port, '')
             assert (root / 'data/synthetic-sentinel').read_text() == 'persistent'
             assert (root / 'config/.env').read_bytes() == config, 'keys changed across rollout'
+            assert import_reference()['id'] == imported['id'], 'reference import duplicated after restart'
+            assert request('/v1/reference-videos/'+reference['id'], key)['status'] == 'completed'
             build_tag(bad, bad_sha, ['python', '-c', 'raise SystemExit(1)'])
             archive = upload(bad, bad_sha)
             try:

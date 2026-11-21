@@ -366,6 +366,8 @@ class ProjectService:
         except (ValueError, AttributeError):
             raise HTTPException(422, 'request_id must be a UUID') from None
         key = owner + ':' + str(uuid.UUID(fields['request_id']))
+        if key in self.data.get('reference_imports', {}):
+            raise HTTPException(409, 'request_id already used for reference import')
         previous = self.data['requests'].get(key)
         if previous:
             if previous['project'] != pid or previous['action'] != action:
