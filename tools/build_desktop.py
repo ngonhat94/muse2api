@@ -22,6 +22,7 @@ DIST = ROOT / "dist" / "desktop"
 ENGINE_SOURCES = (
     "app.py", "engine.py", "store.py", "config.py", "cdp.py", "proxy.py", "tenant.py", "protection.py",
     'authority.py', 'idempotency.py', 'operations.py', 'client_config.py',
+    'video_projects.py', 'reference_videos.py', 'thumbnails.py', 'generation_timing.py',
     "requirements.txt", "desktop/launcher.py", "desktop/requirements-build.txt",
     "tools/build_desktop.py",
 )

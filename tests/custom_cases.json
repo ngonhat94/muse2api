@@ -1,5 +1,9 @@
 [
   [
+    "test_reference_videos.py",
+    []
+  ],
+  [
     "test_chat_snapshots.py",
     []
   ],

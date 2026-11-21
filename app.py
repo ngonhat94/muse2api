@@ -2427,6 +2427,107 @@ from video_projects import (ProjectService, ProjectCreate, ProjectPatch, Revisio
                             render_mp4, render_capability)
 _PLANNING_DIAGNOSTICS = contextvars.ContextVar('planning_diagnostics', default=False)
 VIDEO_PROJECTS = ProjectService(Path(CFG.data_dir) / 'video-projects.json')
+from reference_videos import ReferenceService, extraction_capability, MAX_FILE, MAX_BODY, MIMES
+REFERENCES = ReferenceService(VIDEO_PROJECTS, store, Path(CFG.data_dir) / 'reference-scratch')
+
+
+class ReferenceBodyLimit:
+    """Bound multipart bytes before Starlette can spool an untrusted upload."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http' or scope.get('method') != 'POST' or scope.get('path') != '/v1/reference-videos':
+            return await self.app(scope, receive, send)
+        # Incumbent auth/rate middleware still runs before any receive call.
+        size = 0
+        async def bounded_receive():
+            nonlocal size
+            message = await receive()
+            size += len(message.get('body', b''))
+            if size > MAX_BODY:
+                raise HTTPException(413, 'Reference upload body too large')
+            return message
+        await self.app(scope, bounded_receive, send)
+
+
+app.add_middleware(ReferenceBodyLimit)
+
+
+@app.post('/v1/reference-videos', status_code=202)
+async def upload_reference_video(request: Request, principal=Depends(auth)):
+    from starlette.formparsers import MultiPartParser, MultiPartException
+    from starlette.datastructures import UploadFile
+    # Body limiter bounds memory; no multipart spool writes outside data root.
+    # Parser's class default is read when each spool is allocated.
+    extraction_capability()
+    if not request.headers.get('content-type', '').lower().startswith('multipart/form-data;'):
+        raise HTTPException(415, 'Expected local video multipart upload')
+    owner = _owner(principal)
+    _project_preflight(principal)
+    job = REFERENCES.admit(owner)
+    authority = None
+    source = None
+    try:
+        authority = OutstandingJob(owner, principal.get('key_version'))
+        authority.check()
+        # Isolated parser instance, avoiding process-global multipart settings.
+        parser = MultiPartParser(request.headers, request.stream(), max_files=1, max_fields=0)
+        parser.spool_max_size = MAX_BODY
+        # Older supported Starlette versions name this max_file_size.
+        parser.max_file_size = MAX_BODY
+        try:
+            form = await parser.parse()
+        except BaseException as exc:
+            for handle in parser._files_to_close_on_error:
+                handle.close()
+            if isinstance(exc, (MultiPartException, ValueError)):
+                raise HTTPException(422, 'Invalid reference multipart upload') from None
+            raise
+        try:
+            items = list(form.multi_items())
+            if len(items) != 1 or items[0][0] != 'file' or not isinstance(items[0][1], UploadFile):
+                raise HTTPException(422, 'Exactly one file is required')
+            upload = items[0][1]
+            if upload.content_type not in MIMES:
+                raise HTTPException(415, 'Unsupported reference video MIME')
+            data = await upload.read(MAX_FILE + 1)
+            if not data or len(data) > MAX_FILE:
+                raise HTTPException(413, 'Reference video must be 1 byte to 64 MiB')
+            authority.check()
+            source = uuid.uuid4().hex + '.mp4'
+            store.write_media(source, data, owner)
+        finally:
+            await form.close()
+        REFERENCES.start(owner, job['id'], source, authority.check, authority.release)
+        authority = None  # Worker now owns authority lifecycle.
+        return job
+    except Exception:
+        REFERENCES.update(owner, job['id'], status='failed', stage='failed',
+                          error='Reference upload failed; check local file and storage.')
+        if source:
+            store.delete_media(source, owner_id=owner)
+        raise
+    finally:
+        if authority is not None:
+            authority.release()
+
+
+@app.get('/v1/reference-videos/{jid}')
+def get_reference_video(jid: str, principal=Depends(auth)):
+    return REFERENCES.get(_owner(principal), jid)
+
+
+@app.get('/v1/reference-videos/{jid}/shots/{sid}/thumbnail')
+def reference_thumbnail(jid: str, sid: str, principal=Depends(auth)):
+    return Response(REFERENCES.thumbnail(_owner(principal), jid, sid), media_type='image/jpeg',
+                    headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+@app.post('/v1/reference-videos/{jid}/import')
+def import_reference_shots(jid: str, payload: dict = Body(...), principal=Depends(auth)):
+    project = REFERENCES.import_shots(_owner(principal), jid, payload)
+    return _project_view(project['id'], principal)
 
 
 def _project_preflight(principal, generation=False):
