@@ -9,10 +9,70 @@ import shutil
 import subprocess
 import tempfile
 import math
+import logging
 from pathlib import Path
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
+
+
+PLANNING_MESSAGES = {
+    'no_account': 'No eligible planning account; ask the administrator to check account availability or edit manually.',
+    'auth_failed': 'Planning authorization failed; check session and account health with the administrator.',
+    'upstream_failed': 'Planning service request failed; check service health before explicitly authorizing a new request.',
+    'invalid_json': 'Planner returned invalid JSON; edit manually or explicitly authorize a new request.',
+    'invalid_schema': 'Planner draft did not match the required script/scene schema; edit manually or authorize a new request.',
+    'project_changed': 'Project edited during planning; draft not applied. Refresh before continuing.',
+    'unknown': 'Planning outcome could not be diagnosed; inspect the request receipt or ask the administrator. No automatic resubmission.',
+}
+
+
+class PlanningFailure(Exception):
+    """Only fixed categories and stages cross the adapter boundary."""
+    def __init__(self, code, stage='adapter'):
+        self.code = code
+        self.stage = stage
+        super().__init__(PLANNING_MESSAGES[code])
+
+
+def planning_content(result):
+    try:
+        content = result['choices'][0]['message']['content']
+    except (KeyError, IndexError, TypeError):
+        raise PlanningFailure('upstream_failed', 'adapter_response') from None
+    if not isinstance(content, str) or len(content) > 64000:
+        raise PlanningFailure('upstream_failed', 'adapter_response')
+    return content
+
+
+def planning_diagnostic(exc, stage):
+    code = 'unknown'
+    if isinstance(exc, PlanningFailure):
+        code, stage = exc.code, exc.stage
+    elif isinstance(exc, json.JSONDecodeError):
+        code = 'invalid_json'
+    elif isinstance(exc, HTTPException):
+        if stage == 'apply' and exc.status_code == 409:
+            code = 'project_changed'
+        elif stage == 'adapter':
+            if exc.status_code in (401, 403):
+                code = 'auth_failed'
+            elif exc.status_code in (429, 502, 503, 504):
+                code = 'upstream_failed'
+    elif stage == 'schema' and isinstance(exc, ValueError):
+        code = 'invalid_schema'
+    return code, stage
+
+
+def log_planning_failure(pid, request_id, job_id, code, stage, exc):
+    # No exception text, traceback, validation input, prompt or provider response.
+    cause = exc.__cause__ if isinstance(exc, PlanningFailure) and exc.__cause__ else exc
+    status = getattr(cause, 'status_code', None)
+    logging.getLogger(__name__).warning(json.dumps(dict(
+        event='planning_failed', project_id=pid, request_id=request_id, job_id=job_id,
+        error_code=code, error_stage=stage, exception_class=type(cause).__name__,
+        schema_location='draft' if code == 'invalid_schema' else None,
+        http_status=status if type(status) is int and 100 <= status <= 599 else None)))
 
 
 class SceneEdit(BaseModel):
@@ -147,6 +207,7 @@ class ProjectService:
             planning = p.get('planning')
             if planning and planning['status'] in ('queued', 'processing'):
                 planning.update(status='unknown', stage='unknown',
+                                error_code='unknown', error_stage=planning.get('stage'),
                                 error='Planning interrupted; no automatic resubmission.', updated_at=int(time.time()))
                 self.changed(p)
                 dirty = True
@@ -219,7 +280,8 @@ class ProjectService:
             return dict(request_id=request_id, action=action, accepted=bool(receipt),
                         status=state.get('status', 'unknown') if receipt else 'not_found',
                         scene_id=sid, task_id=receipt['id'] if receipt else None,
-                        error=state.get('error'))
+                        error=state.get('error'), error_code=state.get('error_code'),
+                        error_stage=state.get('error_stage'))
 
     @staticmethod
     def receipt_state(p, receipt):
@@ -242,7 +304,7 @@ class ProjectService:
         for receipt in self.data['requests'].values():
             if receipt['project'] == p['id']:
                 state = self.receipt_state(p, receipt)
-                receipt['state'] = {k: state.get(k) for k in ('status', 'error')}
+                receipt['state'] = {k: state.get(k) for k in ('status', 'error', 'error_code', 'error_stage')}
         p['revision'] += 1
         p['updated_at'] = int(time.time())
         self.save()
@@ -347,36 +409,46 @@ class ProjectService:
             now = int(time.time())
             jid = uuid.uuid4().hex
             p['planning'] = dict(id=jid, request_id=request['request_id'], status='queued',
-                                 stage='queued', error=None, started_at=now, updated_at=now)
+                                 stage='queued', error=None, error_code=None, error_stage=None,
+                                 started_at=now, updated_at=now)
             self.data['requests'][key] = {'project': pid, 'action': 'plan', 'id': jid}
             self.changed(p)
             revision = p['revision']
             snapshot = self.public(p)
             accepted = self.public(p)
-        def transition(status, stage, error=None):
+        def transition(status, stage, error=None, error_code=None, error_stage=None):
             current = self.owned(owner, pid)
-            current['planning'].update(status=status, stage=stage, error=error, updated_at=int(time.time()))
+            current['planning'].update(status=status, stage=stage, error=error,
+                                       error_code=error_code, error_stage=error_stage, updated_at=int(time.time()))
             self.changed(current)
             return current
         def worker():
             import asyncio
+            stage = 'adapter'
             try:
                 with self.lock:
                     transition('processing', 'planning')
                 text = asyncio.run(planner(snapshot))
+                stage = 'parse'
+                if not isinstance(text, str) or len(text) > 64000:
+                    raise PlanningFailure('upstream_failed', 'adapter_response')
+                draft = json.loads(text)
+                stage = 'schema'
+                fields = self.draft_fields(draft, revision)
+                stage = 'apply'
                 with self.lock:
                     current = transition('processing', 'validating')
                     # Only our own factual progress increments are permitted.
                     if current['revision'] != revision + 2:
                         raise HTTPException(409, 'Project edited during planning')
-                    fields = self.draft(text, current['revision'])
+                    fields['revision'] = current['revision']
                     self.patch(owner, pid, fields)
                     transition('completed', 'completed')
             except Exception as exc:
+                code, failing_stage = planning_diagnostic(exc, stage)
+                log_planning_failure(pid, request['request_id'], jid, code, failing_stage, exc)
                 with self.lock:
-                    conflict = isinstance(exc, HTTPException) and exc.status_code == 409
-                    transition('failed', 'failed', 'Project edited during planning; draft not applied.' if conflict else
-                               'Planning unavailable or invalid draft; edit manually or authorize a new request.')
+                    transition('failed', 'failed', PLANNING_MESSAGES[code], code, failing_stage)
         try:
             thread = threading.Thread(target=worker, daemon=True)
             self.threads = [t for t in self.threads if t.is_alive()]
@@ -384,20 +456,29 @@ class ProjectService:
             thread.start()
         except BaseException:
             with self.lock:
-                transition('unknown', 'unknown', 'Planning admission interrupted; no automatic resubmission.')
+                transition('unknown', 'unknown', 'Planning admission interrupted; no automatic resubmission.',
+                           'unknown', 'admission')
         return accepted
 
     @staticmethod
     def draft(text, revision):
         if not isinstance(text, str) or len(text) > 64000:
             raise ValueError('Invalid planner response')
-        draft = json.loads(text)
-        if set(draft) != {'script', 'scenes'} or not draft['script'].strip() or not draft['scenes']:
+        return ProjectService.draft_fields(json.loads(text), revision)
+
+    @staticmethod
+    def draft_fields(draft, revision):
+        if (not isinstance(draft, dict) or set(draft) != {'script', 'scenes'}
+                or not isinstance(draft['script'], str) or not draft['script'].strip()
+                or not isinstance(draft['scenes'], list) or not draft['scenes']):
             raise ValueError('Invalid draft')
-        fields = validated(ProjectPatch, dict(draft, revision=revision))
+        fields = ProjectPatch.model_validate(dict(draft, revision=revision)).model_dump(exclude_none=True)
         for scene in fields['scenes']:
             if scene.get('id') or scene.get('selected_attempt_id') or scene.get('approved'):
                 raise ValueError('Planner must return an unapproved draft')
+        scenes = fields['scenes']
+        if len({s['order'] for s in scenes}) != len(scenes) or sum(s['duration'] for s in scenes) > 120:
+            raise ValueError('Invalid scene order or total duration')
         return fields
 
     async def legacy_plan(self, owner, pid, request, planner):
