@@ -45,6 +45,56 @@ def planning_content(result):
     return content
 
 
+def parse_planning_json(text):
+    """Normalize one whole-response JSON fence, never repair or search for JSON."""
+    if not isinstance(text, str) or len(text) > 64000:
+        raise PlanningFailure('upstream_failed', 'adapter_response')
+    text = text.strip().lstrip('\ufeff').strip()
+    if text.startswith('```'):
+        header, separator, body = text.partition('\n')
+        if not separator or header.strip().lower() not in ('```', '```json') or not body.endswith('```'):
+            raise json.JSONDecodeError('Invalid JSON wrapper', '', 0)
+        text = body[:-3].strip()
+
+    def invalid(*_):
+        # Do not retain model content in exception messages.
+        raise json.JSONDecodeError('Invalid JSON value', '', 0)
+
+    # Bound decoder nesting even on runtimes with permissive recursion limits.
+    depth, quoted, escaped = 0, False, False
+    for char in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in '{[':
+            depth += 1
+            if depth > 64:
+                invalid()
+        elif char in '}]':
+            depth -= 1
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                invalid()
+            result[key] = value
+        return result
+
+    try:
+        return json.loads(text, object_pairs_hook=unique_object, parse_constant=invalid)
+    except (RecursionError, ValueError) as exc:
+        if isinstance(exc, json.JSONDecodeError):
+            raise
+        raise json.JSONDecodeError('Invalid JSON value', '', 0) from None
+
+
 def planning_diagnostic(exc, stage):
     code = 'unknown'
     if isinstance(exc, PlanningFailure):
@@ -432,7 +482,7 @@ class ProjectService:
                 stage = 'parse'
                 if not isinstance(text, str) or len(text) > 64000:
                     raise PlanningFailure('upstream_failed', 'adapter_response')
-                draft = json.loads(text)
+                draft = parse_planning_json(text)
                 stage = 'schema'
                 fields = self.draft_fields(draft, revision)
                 stage = 'apply'
@@ -464,7 +514,7 @@ class ProjectService:
     def draft(text, revision):
         if not isinstance(text, str) or len(text) > 64000:
             raise ValueError('Invalid planner response')
-        return ProjectService.draft_fields(json.loads(text), revision)
+        return ProjectService.draft_fields(parse_planning_json(text), revision)
 
     @staticmethod
     def draft_fields(draft, revision):
@@ -491,7 +541,7 @@ class ProjectService:
             text = await planner(snapshot)
             if not isinstance(text, str) or len(text) > 64000:
                 raise ValueError('Invalid planner response')
-            draft = json.loads(text)
+            draft = parse_planning_json(text)
             if set(draft) != {'script', 'scenes'} or not draft['script'].strip() or not draft['scenes']:
                 raise ValueError('Invalid draft')
             fields = validated(ProjectPatch, dict(draft, revision=request['revision']))

@@ -57,6 +57,31 @@ class PlanningDiagnosticsTest(unittest.TestCase):
         app.app.dependency_overrides[app.auth] = lambda: {'id': 'alice', 'role': 'user', 'key_version': 1}
         try:
             with patch.object(app, 'VIDEO_PROJECTS', self.service):
+                draft = {'script': 'HTTP fixture', 'scenes': [
+                    {'order': 0, 'narration': '', 'prompt': 'Sky', 'duration': 1}]}
+                target = self.service.create('alice', {'title': 'HTTP', 'idea': 'Synthetic'})
+                request_id = str(uuid4())
+                from unittest.mock import MagicMock
+                with patch.object(app, '_project_preflight'), \
+                     patch.object(app.store, 'pick_account', return_value={'id': 'fixture', 'cookies': {}}), \
+                     patch.object(app, 'OutstandingJob', return_value=MagicMock()), \
+                     patch.object(app, 'safe_chat_stream', return_value=iter(['```json\n', json.dumps(draft), '\n```'])) as stream:
+                    response = client.post(f"/v1/video-projects/{target['id']}/plan", json={
+                        'revision': target['revision'], 'request_id': request_id})
+                    self.assertEqual(response.status_code, 200)
+                    for thread in self.service.threads:
+                        thread.join(5)
+                        self.assertFalse(thread.is_alive())
+                    stream.assert_called_once()
+                completed = client.get(f"/v1/video-projects/{target['id']}").json()
+                self.assertEqual(completed['planning']['status'], 'completed')
+                self.assertEqual(completed['script'], 'HTTP fixture')
+                self.assertFalse(completed['script_approved'])
+                self.assertFalse(completed['scenes'][0]['approved'])
+                receipt = client.get(f"/v1/video-projects/{target['id']}/requests/{request_id}")
+                self.assertEqual(receipt.json()['status'], 'completed')
+                restarted = ProjectService(self.service.path)
+                self.assertEqual(restarted.get('alice', target['id'])['script'], 'HTTP fixture')
                 response = client.get(f"/v1/video-projects/{p['id']}")
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()['planning']['error_code'], 'upstream_failed')
@@ -88,7 +113,7 @@ class PlanningDiagnosticsTest(unittest.TestCase):
             (RuntimeError('SENTINEL_SECRET unknown'), 'unknown', 'adapter'),
             (None, 'upstream_failed', 'adapter_response'),
             ('x' * 64001, 'upstream_failed', 'adapter_response'),
-            ('```json\n{}\n```', 'invalid_json', 'parse'),
+            ('```json\n{}\n```', 'invalid_schema', 'schema'),
         ]
         drafts = [None, [], {'script': 4, 'scenes': []},
                   {'script': 'Draft', 'scenes': [{'order': 0, 'narration': '', 'prompt': 'x', 'duration': '1'}]},
@@ -145,6 +170,46 @@ class PlanningDiagnosticsTest(unittest.TestCase):
         self.assertEqual(current['script'], 'Human')
         self.assertEqual(current['planning']['error_code'], 'project_changed')
         self.assertEqual(current['planning']['error_stage'], 'apply')
+
+    def test_fenced_real_adapter_content_completes_once(self):
+        from video_projects import planning_content
+        draft = {'script': 'Braces { } and ```json inside a string', 'scenes': [
+            {'order': 0, 'narration': '', 'prompt': 'Sky', 'duration': 1}]}
+        content = '\ufeff  ```json\n' + json.dumps(draft) + '\n```  \n'
+        envelope = {'choices': [{'message': {'role': 'assistant', 'content': content},
+                                 'finish_reason': 'stop'}]}
+        p, req = self.run_plan(planning_content(envelope))
+        self.assertEqual(p['planning']['status'], 'completed')
+        self.assertEqual(p['script'], draft['script'])
+        self.assertFalse(p['script_approved'])
+        self.assertFalse(p['scenes'][0]['approved'])
+        self.assertEqual(self.service.request_status('alice', p['id'], req['request_id'])['status'], 'completed')
+
+    def test_wrapper_bounds_and_invalid_content_fail_closed(self):
+        from video_projects import parse_planning_json, PlanningFailure
+        draft = {'script': 'Literal {braces}, ``` and escaped "quote"', 'scenes': [
+            {'order': 0, 'narration': '', 'prompt': 'Sky', 'duration': 1}]}
+        raw = json.dumps(draft)
+        for value in (raw, ' \ufeff' + raw + '\n', '```\n' + raw + '\n```',
+                      '```JSON  \r\n' + raw + '\r\n```  '):
+            with self.subTest(wrapper=value[:10]):
+                self.assertEqual(ProjectService.draft(value, 1)['script'], draft['script'])
+        invalid = [raw + raw, raw + ' trailing', 'Here is the draft:\n' + raw,
+                   raw[:-1], '```json\n' + raw, '```python\n' + raw + '\n```',
+                   '```json\n' + raw + '\n```\n```json\n' + raw + '\n```',
+                   '{"script":"first","script":"second","scenes":[]}',
+                   '{"script":"x","scenes":[],"extra":NaN}',
+                   '{"script":"x","scenes":[],"extra":Infinity}',
+                   '[' * 2000 + ']' * 2000, '', 'not JSON']
+        for value in invalid:
+            with self.subTest(invalid=value[:20]), self.assertRaises(json.JSONDecodeError):
+                parse_planning_json(value)
+        for value in (None, {}, b'{}', 'x' * 64001):
+            with self.assertRaises(PlanningFailure):
+                parse_planning_json(value)
+        for value in ('[]', 'null', '"text"', '1', 'true', '[{}]'):
+            with self.assertRaises(ValueError):
+                ProjectService.draft(value, 1)
 
     def test_success_has_no_failure_metadata(self):
         value = json.dumps({'script': 'Draft', 'scenes': [
