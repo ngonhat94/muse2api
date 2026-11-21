@@ -1571,8 +1571,13 @@ class MuseEngine:
 
     def chat_stream(self, cookies: dict, prompt: str, expires: dict | None = None,
                     timeout: int | None = None, account_id: str | None = None,
-                    stop_event=None):
-        """发一条消息，流式 yield 增量文本。"""
+                    stop_event=None, final_only: bool = False):
+        """Poll full DOM snapshots; emit deltas, or only the final snapshot.
+
+        Append-only streaming cannot retract text already delivered. A revised
+        snapshot must fail that stream, never be concatenated as another delta.
+        Nonstream callers retain the latest snapshot until completion instead.
+        """
         timeout = int(timeout or getattr(self.cfg, "chat_timeout", 300))
         self.ensure_page(cookies, expires, account_id=account_id)
         self.reset_thread(for_chat=True)
@@ -1604,7 +1609,8 @@ class MuseEngine:
             delta = cur[len(sent):] if cur.startswith(sent) else cur
             if delta:
                 sent = cur
-                yield delta
+                if not final_only:
+                    yield delta
                 last = cur
                 got_first = True
                 break
@@ -1622,18 +1628,24 @@ class MuseEngine:
                 continue
 
             if cur != last:
+                if not final_only and not cur.startswith(sent):
+                    raise MuseGenerationError('Upstream revised text during append-only streaming')
                 delta = cur[len(sent):] if cur.startswith(sent) else cur
-                if delta:
-                    sent = cur
+                sent = cur
+                if delta and not final_only:
                     yield delta
                 last, stable = cur, 0
             else:
                 stable += 1
                 # Stop 按钮消失说明前端生成彻底结束，连续 3 次（约 0.18s）无新文本即正常退出
                 if not has_stop and stable >= 3:
+                    if final_only:
+                        yield sent
                     return
                 # Stop 按钮仍在时绝不过早截断（模型思考、代码块或网络抖动），允许等待至 stable >= 80（约 5s）防卡死
                 if has_stop and stable >= 80:
+                    if final_only:
+                        raise MuseGenerationError('Upstream reply did not finish')
                     return
 
         raise MuseGenerationError("等待助手回复超时")
@@ -1642,7 +1654,8 @@ class MuseEngine:
              timeout: int | None = None, account_id: str | None = None) -> str:
         """发一条消息，返回完整回复文本（非流式）。"""
         out = ""
-        for chunk in self.chat_stream(cookies, prompt, expires, timeout, account_id=account_id):
+        for chunk in self.chat_stream(cookies, prompt, expires, timeout, account_id=account_id,
+                                      final_only=True):
             out += chunk
         return out
 
