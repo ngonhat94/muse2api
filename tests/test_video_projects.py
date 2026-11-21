@@ -23,6 +23,88 @@ class ProjectsTest(unittest.TestCase):
         return service.patch('alice', p['id'], {'revision': p['revision'], 'script_approved': True,
             'scenes': [{k: (True if k == 'approved' else v) for k, v in p['scenes'][0].items() if k != 'attempts'}]})
 
+    def test_async_plan_returns_before_adapter_and_replays_stale_revision(self):
+        import threading
+        import json
+        s = self.service()
+        p = s.create('alice', {'title': 'Demo', 'idea': 'Idea'})
+        gate = threading.Event()
+        entered = threading.Event()
+        calls = []
+        async def planner(snapshot):
+            calls.append(snapshot['idea'])
+            entered.set()
+            gate.wait(5)
+            return json.dumps({'script': 'Draft', 'scenes': [
+                {'order': 0, 'narration': 'Draft', 'prompt': 'Sky', 'duration': 1}]})
+        req = {'revision': p['revision'], 'request_id': str(uuid4())}
+        try:
+            p = asyncio.run(s.plan('alice', p['id'], req, planner))
+            self.assertFalse(gate.is_set())
+            self.assertIn(p['planning']['status'], ('queued', 'processing'))
+            self.assertTrue(entered.wait(1))
+            replay = asyncio.run(s.plan('alice', p['id'], req, planner))
+            self.assertEqual(replay['planning']['id'], p['planning']['id'])
+        finally:
+            gate.set()
+            for thread in s.threads:
+                thread.join(5)
+        p = s.get('alice', p['id'])
+        self.assertEqual(p['planning']['status'], 'completed')
+        self.assertEqual(p['script'], 'Draft')
+        self.assertEqual(calls, ['Idea'])
+        receipt = s.request_status('alice', p['id'], req['request_id'])
+        self.assertEqual(receipt['status'], 'completed')
+        self.assertEqual(receipt['action'], 'plan')
+        self.assertTrue(receipt['accepted'])
+
+    def test_async_plan_invalid_conflict_restart_and_receipt_binding(self):
+        import threading
+        import json
+        s = self.service()
+        p = s.create('alice', {'title': 'Demo', 'idea': 'Idea'})
+        async def invalid(snapshot):
+            return 'invalid secret upstream JSON'
+        req = {'revision': p['revision'], 'request_id': str(uuid4())}
+        asyncio.run(s.plan('alice', p['id'], req, invalid))
+        for thread in s.threads:
+            thread.join(5)
+        p = s.get('alice', p['id'])
+        self.assertEqual(p['planning']['status'], 'failed')
+        self.assertEqual(p['script'], '')
+        self.assertNotIn('secret', s.path.read_text())
+        gate = threading.Event()
+        async def delayed(snapshot):
+            gate.wait(5)
+            return json.dumps({'script': 'New', 'scenes': [
+                {'order': 0, 'narration': 'New', 'prompt': 'Sky', 'duration': 1}]})
+        req2 = {'revision': p['revision'], 'request_id': str(uuid4())}
+        try:
+            p = asyncio.run(s.plan('alice', p['id'], req2, delayed))
+            latest = s.get('alice', p['id'])
+            s.patch('alice', p['id'], {'revision': latest['revision'], 'script': 'Human edit'})
+        finally:
+            gate.set()
+            for thread in s.threads:
+                thread.join(5)
+        p = s.get('alice', p['id'])
+        self.assertEqual(p['script'], 'Human edit')
+        self.assertEqual(p['planning']['status'], 'failed')
+        self.assertIn('edited', p['planning']['error'])
+        p['planning'].update(status='processing', stage='planning')
+        s.data['projects'][p['id']] = dict(p, owner_id='alice')
+        s.save()
+        restarted = self.service()
+        self.assertEqual(restarted.get('alice', p['id'])['planning']['status'], 'unknown')
+        self.assertEqual(restarted.request_status('alice', p['id'], req2['request_id'])['status'], 'unknown')
+        self.assertEqual(restarted.request_status('alice', p['id'], req['request_id'])['status'], 'failed')
+        self.assertFalse(restarted.request_status('alice', p['id'], str(uuid4()))['accepted'])
+        other = restarted.create('alice', {'title': 'Other', 'idea': 'Other'})
+        self.assertEqual(restarted.request_status('alice', other['id'], req['request_id'])['status'], 'not_found')
+        with self.assertRaises(HTTPException) as denied:
+            restarted.request_status('bob', p['id'], req['request_id'])
+        self.assertEqual(denied.exception.status_code, 404)
+
     def test_idempotent_submission_reconciliation_restart_and_selected_take(self):
         s = self.service()
         p = self.ready(s)
