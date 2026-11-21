@@ -1,5 +1,11 @@
 # Video projects MVP API
 
+## Accepted planner formatting
+
+Planning accepts plain JSON or one whole-response triple-backtick block with an optional `json` marker (case-insensitive), surrounding whitespace, and an optional leading BOM. JSON strings containing braces or backticks remain unchanged. Only wrappers are removed: no substring searching, prose extraction, JSON repair, default script/scenes, or schema coercion. Surrounding prose is deliberately rejected rather than guessing which content is authoritative. Multiple objects/blocks, trailing tokens, truncation, duplicate keys, non-finite JSON constants and nesting deeper than 64 are rejected. The response remains bounded to 64,000 characters. Both asynchronous and legacy planning use this parser; exact script/scenes schema, scene/duration bounds, ownership, approval and revision checks still apply. Normalization makes no additional provider calls and never retries a failed or unknown plan.
+
+The chat adapter joins assistant text chunks unchanged into `choices[0].message.content`; it does not provide native JSON mode or separate upstream system-role enforcement. The planner's existing explicit JSON/schema instruction remains in the actual flattened prompt. A prompt-only guarantee is therefore insufficient, but changing role labels cannot guarantee structured output either. Historical `invalid_json` evidence alone does not prove that the discarded response was fenced.
+
 ## Safe planning diagnostics and curl
 
 Async `planning` and request receipts add nullable `error_code` and `error_stage`; the existing `error` string and status/stage enums remain compatible. New queued/successful plans have null diagnostic fields. Older records may omit them: absence means unavailable evidence, not a model-configuration diagnosis. Historical exceptions discarded by older workers cannot be reconstructed. Receipt snapshots retain diagnostics when a newer plan replaces the current one.
@@ -10,7 +16,7 @@ Async `planning` and request receipts add nullable `error_code` and `error_stage
 | `auth_failed` | `adapter` | Adapter authority/auth rejection (401/403); check session/account health. |
 | `upstream_failed` | `adapter` | Known upstream failure or HTTP 429/502/503/504; check service health. |
 | `upstream_failed` | `adapter_response` | Missing/invalid choices/message/content envelope, non-text content, or content over 64,000 characters. |
-| `invalid_json` | `parse` | Text is not strict JSON; markdown fences are deliberately not normalized. |
+| `invalid_json` | `parse` | Text is not valid JSON after bounded whole-response wrapper normalization. |
 | `invalid_schema` | `schema` | JSON is not a bounded unapproved script/scenes draft (including total duration and unique order). |
 | `project_changed` | `apply` | Revision conflict; generated content was not applied. Refresh; human edits survive. |
 | `unknown` | last observed stage | Unclassified exception; do not infer its cause. Restart uses the persisted milestone; thread-start interruption uses `admission`. |
