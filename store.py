@@ -37,7 +37,7 @@ from protection import AccountCipher, load_accounts, StorageQuotaExceeded
 _LOCK = threading.Lock()
 ADMIN_OWNER = "admin"
 MEDIA_EXTENSIONS = frozenset((".gif", ".jpeg", ".jpg", ".mov", ".mp4",
-                              ".png", ".webm", ".webp"))
+                              ".png", ".wav", ".webm", ".webp"))
 
 
 def valid_media_name(name: object) -> bool:
