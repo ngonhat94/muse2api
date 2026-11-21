@@ -628,7 +628,8 @@ def _renew_and_persist(acc_id: str, wake_vm: bool = True, force: bool = False,
 
 def safe_chat_stream(cookies: dict, prompt: str, expires: dict | None,
                      timeout: int, account_id: str | None,
-                     owner_id: str = ADMIN_OWNER, authority_version=None, job=None):
+                     owner_id: str = ADMIN_OWNER, authority_version=None, job=None,
+                     final_only: bool = False):
     """在独立线程中执行 chat_stream 并持有 GEN_LOCK，通过 Queue 往外吐。
     无论下游客户端何时断连、异常或超时，stop_event + finally 块保证 100% 立即释放 GEN_LOCK，绝不死锁。
     若首字前遇到单账号 VM 卡死或会话异常，自动切换下一个健康账号重试一次。"""
@@ -700,7 +701,8 @@ def safe_chat_stream(cookies: dict, prompt: str, expires: dict | None,
                     job.check()
                     for chunk in engine.chat_stream(
                         cur_cookies, prompt, cur_exp, timeout,
-                        account_id=cur_id, stop_event=stop_event
+                        account_id=cur_id, stop_event=stop_event,
+                        **({'final_only': True} if final_only else {})
                     ):
                         yielded = True
                         emit(("data", chunk))
@@ -715,7 +717,7 @@ def safe_chat_stream(cookies: dict, prompt: str, expires: dict | None,
                     if cur_id:
                         store.mark(cur_id, False, str(exc), owner_id=owner_id)
                     engine.close_current_page()
-                    if yielded:
+                    if yielded or final_only:
                         break
                 except Exception as exc:
                     last_exc = exc
@@ -723,7 +725,7 @@ def safe_chat_stream(cookies: dict, prompt: str, expires: dict | None,
                         engine.reset_thread()
                     except Exception:
                         pass
-                    if yielded:
+                    if yielded or final_only:
                         break
             if last_exc is not None:
                 emit(("error", last_exc))
@@ -2732,7 +2734,8 @@ async def chat_completions(req: ChatRequest, principal=Depends(auth)):
     def run() -> str:
         return "".join(safe_chat_stream(cookies, prompt, expires, timeout,
                                         account_id=acc_id, owner_id=owner_id,
-                                              authority_version=(principal or {}).get("key_version"), job=job))
+                                              authority_version=(principal or {}).get("key_version"), job=job,
+                                              final_only=True))
 
     try:
         text = await asyncio.shield(asyncio.create_task(asyncio.to_thread(run)))
@@ -2874,7 +2877,8 @@ async def responses_api(req: ResponsesRequest, principal=Depends(auth)):
     def run() -> str:
         return "".join(safe_chat_stream(cookies, prompt, expires, timeout,
                                         account_id=acc_id, owner_id=owner_id,
-                                              authority_version=(principal or {}).get("key_version"), job=job))
+                                              authority_version=(principal or {}).get("key_version"), job=job,
+                                              final_only=True))
 
     try:
         text = await asyncio.shield(asyncio.create_task(asyncio.to_thread(run)))

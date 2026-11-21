@@ -22,6 +22,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
   import engine
   target=sys.argv[1] if len(sys.argv)>1 else 'tests/test_tenant_review_blockers.py'
   methods = ('start','generate','chat_stream','renew_session_http','refresh','quota','ensure_page')
+  if target.endswith('test_chat_snapshots.py'):
+   methods = tuple(name for name in methods if name != 'chat_stream')
   if target.endswith(('test_session_health.py', 'test_account_proxy.py')):
    methods = ('start','generate','chat_stream','refresh','quota')
   for name in methods:

@@ -1,5 +1,9 @@
 [
   [
+    "test_chat_snapshots.py",
+    []
+  ],
+  [
     "test_planning_diagnostics.py",
     []
   ],
