@@ -67,6 +67,33 @@ def main(image, sha):
             principal = request('/v1/me', key)
             assert principal['role'] == 'admin'
             assert principal['capabilities']['generation'] is True
+            narration = request('/v1/video-projects/narration-capability', key)
+            assert narration['available'] is False and narration['timing'] == 'scene'
+            # Exercise packaged adapter validation and actual FFmpeg mux without credentials/network.
+            packaged_check = '''
+import io, math, struct, wave, tempfile, subprocess
+from pathlib import Path
+from narration import validate_audio
+from video_projects import render_mp4
+out = io.BytesIO()
+with wave.open(out, 'wb') as w:
+    w.setparams((1,2,24000,0,'NONE','not compressed'))
+    w.writeframes(b''.join(struct.pack('<h',int(8000*math.sin(i*2*math.pi*440/24000))) for i in range(12000)))
+data = out.getvalue()
+assert validate_audio(data, 1) == .5
+with tempfile.TemporaryDirectory(dir='/app/data') as directory:
+    root = Path(directory)
+    (root/'speech.wav').write_bytes(data)
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=red:s=160x90:r=24','-t','1','-c:v','libx264','-threads','1',str(root/'clip.mp4')],check=True)
+    class Store:
+        def storage_usage(self, owner): return dict(bytes=0,files=0,limits=dict(bytes=100000000,files=100))
+        def media_owner(self, mid): return 'fixture'
+        def open_media(self, mid): return (root/mid).open('rb')
+        def write_media(self, mid, data, owner): (root/mid).write_bytes(data)
+    mid = render_mp4(Store(),'fixture',[dict(media_id='clip.mp4',audio_media_id='speech.wav',duration=1)],'16:9',root)
+    assert (root/mid).stat().st_size > 1000
+'''
+            subprocess.run(['docker', 'exec', name, 'python', '-c', packaged_check], check=True)
             assert request('/v1/video-projects', key) == {'projects': []}
             payload = json.dumps({'title': 'Image contract', 'idea': 'Synthetic sky', 'aspect_ratio': '16:9'}).encode()
             create = urllib.request.Request(f'http://127.0.0.1:{port}/v1/video-projects', data=payload,

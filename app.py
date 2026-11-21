@@ -2423,7 +2423,7 @@ def get_video(task_id: str, principal=Depends(auth)):
 # ------------------------- Durable idea-to-video projects -------------------------
 from pathlib import Path
 from video_projects import (ProjectService, ProjectCreate, ProjectPatch, Revision,
-                            Submission, PlanningSubmission, PlanningFailure, planning_content,
+                            Submission, NarrationSubmission, PlanningSubmission, PlanningFailure, planning_content,
                             render_mp4, render_capability)
 _PLANNING_DIAGNOSTICS = contextvars.ContextVar('planning_diagnostics', default=False)
 VIDEO_PROJECTS = ProjectService(Path(CFG.data_dir) / 'video-projects.json')
@@ -2569,6 +2569,81 @@ def list_video_projects(principal=Depends(auth)):
 @app.post('/v1/video-projects')
 def create_video_project(req: ProjectCreate, principal=Depends(auth)):
     return VIDEO_PROJECTS.create(_owner(principal), req.model_dump())
+
+
+@app.get('/v1/video-projects/narration-capability')
+def narration_capability(principal=Depends(auth)):
+    from narration import capability
+    return capability()
+
+
+@app.post('/v1/video-projects/{pid}/scenes/{sid}/narration')
+def narrate_project_scene(pid: str, sid: str, req: NarrationSubmission, principal=Depends(auth)):
+    from narration import OpenAISpeech
+    owner, version = _owner(principal), principal.get('key_version')
+    adapter = OpenAISpeech()
+    def preflight():
+        adapter.preflight()
+        _project_preflight(principal)
+    def synthesize(scene):
+        job = OutstandingJob(owner, version)
+        mid = None
+        try:
+            job.check()
+            data, duration = adapter.generate(scene['narration'], scene['duration'])
+            job.check()
+            mid = 'narration_' + uuid.uuid4().hex + '.wav'
+            store.write_media(mid, data, owner)
+            job.check()
+            return dict(media_id=mid, duration=duration, provider='openai', model=adapter.model, voice=adapter.voice)
+        except BaseException:
+            if mid:
+                store.delete_media(mid, owner_id=owner)
+            raise
+        finally:
+            job.release()
+    return VIDEO_PROJECTS.narrate(owner, pid, sid, req.model_dump(), synthesize, preflight)
+
+
+def _project_audio_bytes(owner, scene):
+    from narration import current_audio, validate_audio, MAX_AUDIO
+    audio = current_audio(scene)
+    if store.media_owner(audio['media_id']) != owner:
+        raise HTTPException(409, 'Narration audio is unavailable')
+    try:
+        with store.open_media(audio['media_id']) as source:
+            data = source.read(MAX_AUDIO + 1)
+        duration = validate_audio(data, scene['duration'])
+        if abs(duration - audio['duration']) > .001:
+            raise ValueError()
+        return data
+    except (OSError, ValueError):
+        raise HTTPException(409, 'Narration audio is unavailable') from None
+
+
+@app.get('/v1/video-projects/{pid}/scenes/{sid}/narration/audio')
+def get_project_narration(pid: str, sid: str, principal=Depends(auth)):
+    owner = _owner(principal)
+    p = VIDEO_PROJECTS.get(owner, pid)
+    scene = next((s for s in p['scenes'] if s['id'] == sid), None)
+    if not scene:
+        raise HTTPException(404, 'Scene not found')
+    return Response(_project_audio_bytes(owner, scene), media_type='audio/wav',
+                    headers={'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment; filename="narration.wav"'})
+
+
+@app.get('/v1/video-projects/{pid}/captions')
+def get_project_captions(pid: str, format: str = 'srt', principal=Depends(auth)):
+    from narration import captions
+    owner = _owner(principal)
+    p = VIDEO_PROJECTS.get(owner, pid)
+    if not p['scenes']:
+        raise HTTPException(409, 'Project has no scenes')
+    for scene in p['scenes']:
+        _project_audio_bytes(owner, scene)
+    text = captions(p['scenes'], format)
+    return Response(text, media_type='text/vtt' if format == 'vtt' else 'application/x-subrip',
+                    headers={'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment; filename="captions.' + format + '"'})
 
 
 @app.get('/v1/video-projects/{pid}')

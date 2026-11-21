@@ -163,6 +163,10 @@ class Submission(Revision):
     request_id: str
 
 
+class NarrationSubmission(Submission):
+    confirm_cost: Literal[True]
+
+
 class PlanningSubmission(Revision):
     request_id: str | None = None
 
@@ -226,9 +230,20 @@ def render_mp4(store, owner, clips, aspect, scratch):
                 raise ValueError('Unsupported source frame rate')
             audio = any(s.get('codec_type') == 'audio' for s in streams)
             cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', '-protocol_whitelist', 'file', '-i', str(source)]
-            if not audio:
+            narration_id = clip.get('audio_media_id')
+            if narration_id:
+                from narration import validate_audio, MAX_AUDIO
+                if store.media_owner(narration_id) != owner:
+                    raise ValueError('Narration is not owned by this tenant')
+                with store.open_media(narration_id) as src:
+                    data = src.read(MAX_AUDIO + 1)
+                validate_audio(data, clip['duration'])
+                speech = root / f'audio{i}.wav'
+                speech.write_bytes(data)
+                cmd += ['-protocol_whitelist', 'file', '-i', str(speech)]
+            elif not audio:
                 cmd += ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']
-            cmd += ['-map', '0:v:0', '-map', '0:a:0' if audio else '1:a:0',
+            cmd += ['-map', '0:v:0', '-map', '1:a:0' if narration_id else ('0:a:0' if audio else '1:a:0'),
                     '-vf', f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,tpad=stop_mode=clone:stop_duration=15',
                     '-af', 'aresample=48000,apad', '-t', str(clip['duration']), '-c:v', 'libx264', '-threads', '1', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac', '-ac', '2', '-ar', '48000', '-b:a', '128k', '-map_metadata', '-1', '-fs', str(64*1024**2), str(root/f'part{i}.mp4')]
@@ -237,9 +252,31 @@ def render_mp4(store, owner, clips, aspect, scratch):
         listing.write_text(''.join(f"file 'part{i}.mp4'\n" for i in range(len(clips))))
         output = root / 'final.mp4'
         run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-protocol_whitelist', 'file', '-f', 'concat', '-safe', '1', '-i', str(listing), '-c', 'copy', '-movflags', '+faststart', '-fs', str(256*1024**2), str(output)])
-        final = json.loads(run(['ffprobe', '-v', 'error', '-show_format', '-of', 'json', str(output)], True))
-        if abs(float(final['format']['duration']) - sum(c['duration'] for c in clips)) > 0.3:
-            raise ValueError('Rendered duration failed validation')
+        final = json.loads(run(['ffprobe', '-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-show_format', '-of', 'json', str(output)], True))
+        streams = final.get('streams', [])
+        video = next((s for s in streams if s.get('codec_type') == 'video'), {})
+        audio = next((s for s in streams if s.get('codec_type') == 'audio'), {})
+        duration = float(final.get('format', {}).get('duration', 0))
+        expected = sum(c['duration'] for c in clips)
+        if (not math.isfinite(duration) or abs(duration - expected) > .3
+                or video.get('codec_name') != 'h264' or video.get('width') != width or video.get('height') != height
+                or audio.get('codec_name') != 'aac' or len(streams) != 2
+                or abs(float(audio.get('duration', 0)) - expected) > .3
+                or abs(float(video.get('duration', 0)) - expected) > .3):
+            raise ValueError('Rendered stream verification failed')
+        # Metadata is not decode evidence. Reject truncated/corrupt frames before persistence.
+        run(['ffmpeg', '-v', 'error', '-xerror', '-nostdin', '-threads', '1', '-protocol_whitelist', 'file',
+             '-i', str(output), '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-'])
+        if any(c.get('audio_media_id') for c in clips):
+            pcm = run(['ffmpeg', '-v', 'error', '-xerror', '-nostdin', '-protocol_whitelist', 'file', '-i', str(output),
+                       '-map', '0:a:0', '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], True)
+            import struct
+            if max((abs(v[0]) for v in struct.iter_unpack('<h', pcm)), default=0) < 32:
+                raise ValueError('Rendered narration is silent')
+        if not 0 < output.stat().st_size < 256 * 1024**2:
+            raise ValueError('Rendered size failed validation')
+        if output.read_bytes()[4:8] != b'ftyp':
+            raise ValueError('Rendered container failed validation')
         name = 'project_' + uuid.uuid4().hex + '.mp4'
         store.write_media(name, output.read_bytes(), owner)
         return name
@@ -254,6 +291,11 @@ class ProjectService:
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {'projects': {}, 'requests': {}}
         dirty = False
         for p in self.data['projects'].values():
+            for scene in p['scenes']:
+                audio = scene.get('narration_audio')
+                if audio and audio['status'] in ('queued', 'processing'):
+                    audio.update(status='unknown', error='Narration interrupted; no automatic resubmission.', error_code='unknown')
+                    dirty = True
             planning = p.get('planning')
             if planning and planning['status'] in ('queued', 'processing'):
                 planning.update(status='unknown', stage='unknown',
@@ -287,7 +329,9 @@ class ProjectService:
 
     @staticmethod
     def public(p):
-        return copy.deepcopy({k: v for k, v in p.items() if k != 'owner_id'})
+        result = copy.deepcopy({k: v for k, v in p.items() if k != 'owner_id'})
+        result.setdefault('audio_mode', 'legacy')
+        return result
 
     def get(self, owner, pid):
         with self.lock:
@@ -325,7 +369,7 @@ class ProjectService:
             if receipt and receipt['project'] != pid:
                 receipt = None
             action = receipt['action'].split(':')[0] if receipt else None
-            sid = receipt['action'].split(':', 1)[1] if receipt and action == 'generate' else None
+            sid = receipt['action'].split(':', 1)[1] if receipt and action in ('generate', 'narration') else None
             state = self.receipt_state(p, receipt) if receipt else {}
             return dict(request_id=request_id, action=action, accepted=bool(receipt),
                         status=state.get('status', 'unknown') if receipt else 'not_found',
@@ -336,7 +380,11 @@ class ProjectService:
     @staticmethod
     def receipt_state(p, receipt):
         action, _, sid = receipt['action'].partition(':')
-        if action == 'generate':
+        if action == 'narration':
+            state = next((s.get('narration_audio') for s in p['scenes'] if s['id'] == sid), None)
+            if state and state['id'] != receipt['id']:
+                state = None
+        elif action == 'generate':
             state = next((a for s in p['scenes'] if s['id'] == sid
                           for a in s['attempts'] if a['id'] == receipt['id']), None)
         else:
@@ -555,11 +603,86 @@ class ProjectService:
             raise HTTPException(502, 'Planning unavailable or invalid draft. Your project is unchanged; edit script and scenes manually.') from None
         return self.patch(owner, pid, fields)
 
+    def narrate(self, owner, pid, sid, request, synthesize, preflight=lambda: None):
+        from narration import binding
+        fields = validated(NarrationSubmission, request)
+        with self.lock:
+            p = self.owned(owner, pid)
+            key, replay = self.receipt(owner, pid, 'narration:' + sid,
+                                       {k: fields[k] for k in ('revision', 'request_id')})
+            if replay:
+                return self.public(p)
+            self.revision(p, fields['revision'])
+            scene = next((s for s in p['scenes'] if s['id'] == sid), None)
+            if not scene:
+                raise HTTPException(404, 'Scene not found')
+            if not scene['narration'].strip():
+                raise HTTPException(409, 'Scene narration text is required')
+            active = [(x['owner_id'], s) for x in self.data['projects'].values() for s in x['scenes']
+                      if s.get('narration_audio', {}).get('status') in ('queued', 'processing')]
+            if len(active) >= 2 or any(o == owner for o, _ in active):
+                raise HTTPException(429, 'Narration capacity reached')
+            action = 'narration:' + sid
+            if sum(r['project'] == pid and r['action'] == action for r in self.data['requests'].values()) >= 50:
+                raise HTTPException(429, 'Scene narration attempt limit reached')
+            preflight()
+            jid = uuid.uuid4().hex
+            scene['narration_audio'] = dict(id=jid, request_id=fields['request_id'], status='queued',
+                source_revision=binding(scene), provider='openai', model=None, voice=None,
+                media_id=None, duration=None, error=None, error_code=None)
+            p['audio_mode'] = 'spoken'
+            if p['render']:
+                p['render']['outdated'] = True
+            self.data['requests'][key] = dict(project=pid, action=action, id=jid)
+            self.changed(p)  # Durable authorization before any provider side effect.
+            snapshot, accepted = copy.deepcopy(scene), self.public(p)
+        def locate():
+            current = self.owned(owner, pid)
+            target = next((s for s in current['scenes'] if s['id'] == sid), None)
+            audio = target.get('narration_audio') if target else None
+            return current, target, audio if audio and audio['id'] == jid else None
+        def worker():
+            try:
+                with self.lock:
+                    current, target, audio = locate()
+                    if not audio or binding(target) != snapshot['narration_audio']['source_revision']:
+                        return
+                    audio['status'] = 'processing'
+                    self.changed(current)
+                result = synthesize(snapshot)
+                with self.lock:
+                    current, target, audio = locate()
+                    if audio:
+                        if binding(target) != snapshot['narration_audio']['source_revision']:
+                            audio.update(status='stale', error='Narration text changed; generate a new narration.', error_code='stale')
+                        else:
+                            audio.update(result, status='completed', error=None, error_code=None)
+                        self.changed(current)
+            except Exception:
+                with self.lock:
+                    current, target, audio = locate()
+                    if audio:
+                        audio.update(status='failed', media_id=None, duration=None,
+                            error='Narration failed; check provider configuration, audio duration and storage quota.', error_code='narration_failed')
+                        self.changed(current)
+        try:
+            thread = threading.Thread(target=worker, daemon=True)
+            self.threads = [t for t in self.threads if t.is_alive()]
+            self.threads.append(thread)
+            thread.start()
+        except BaseException:
+            with self.lock:
+                current, target, audio = locate()
+                if audio:
+                    audio.update(status='unknown', error='Narration admission interrupted; no automatic resubmission.', error_code='unknown')
+                    self.changed(current)
+        return accepted
+
     def render_media(self, owner, pid):
         with self.lock:
             p = self.owned(owner, pid)
             r = p['render']
-            return self.data.get('render_media', {}).get(r['id']) if r and r['status'] == 'completed' else None
+            return self.data.get('render_media', {}).get(r['id']) if r and r['status'] == 'completed' and not (p.get('audio_mode') == 'spoken' and r.get('outdated')) else None
 
     def render(self, owner, pid, request, renderer, owns, preflight=lambda: None):
         with self.lock:
@@ -575,7 +698,14 @@ class ProjectService:
                 take = next((a for a in scene['attempts'] if a['id'] == scene['selected_attempt_id']), None)
                 if not scene['approved'] or not take or take['status'] != 'completed' or not take['media_id'] or not owns(take['media_id']):
                     raise HTTPException(409, 'Every scene needs an approved completed owned selected take')
-                clips.append({'media_id': take['media_id'], 'duration': scene['duration']})
+                clip = {'media_id': take['media_id'], 'duration': scene['duration']}
+                if p.get('audio_mode') == 'spoken':
+                    from narration import current_audio
+                    audio = current_audio(scene)
+                    if not owns(audio['media_id']):
+                        raise HTTPException(409, 'Narration audio is unavailable')
+                    clip['audio_media_id'] = audio['media_id']
+                clips.append(clip)
             if len(self.active) >= 2 or any(self.data['projects'][x]['owner_id'] == owner and self.data['projects'][x]['render'] and self.data['projects'][x]['render']['id'] in self.active for x in self.data['projects']):
                 raise HTTPException(429, 'Render capacity reached; wait for the active render')
             preflight()
@@ -643,6 +773,11 @@ class ProjectService:
                     seen.add(sid)
                     old = existing.get(sid)
                     new = dict(s, id=sid, attempts=copy.deepcopy(old['attempts']) if old else [])
+                    if old and old.get('narration_audio'):
+                        new['narration_audio'] = copy.deepcopy(old['narration_audio'])
+                        from narration import binding
+                        if binding(new) != new['narration_audio']['source_revision']:
+                            new['narration_audio']['status'] = 'stale'
                     new.setdefault('selected_attempt_id', None)
                     selected = new.get('selected_attempt_id')
                     if selected and not any(a['id'] == selected and a['status'] == 'completed' for a in new['attempts']):
