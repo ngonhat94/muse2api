@@ -1869,7 +1869,7 @@ def current_principal(principal=Depends(auth)):
                 "global_settings": principal["role"] == "admin",
                 # All authenticated principals may generate. Account availability,
                 # quotas and rate limits remain submission-time preflight checks.
-                "generation": True,
+                "generation": True, "video_projects": True,
                 "accounts": True, "tasks": True, "media": True}}
 
 

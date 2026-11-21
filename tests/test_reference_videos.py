@@ -205,6 +205,9 @@ class ReferenceVideosTest(unittest.TestCase):
         self.assertNotIn('secret', p.path.read_text())
 
     def test_packaging_and_missing_capability(self):
+        import app
+        for role in ('user', 'admin'):
+            self.assertTrue(app.current_principal({'id': 'fixture', 'role': role})['capabilities']['video_projects'])
         from tools.build_desktop import ENGINE_SOURCES
         from reference_videos import extraction_capability
         from unittest.mock import patch
