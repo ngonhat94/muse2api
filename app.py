@@ -2429,6 +2429,8 @@ _PLANNING_DIAGNOSTICS = contextvars.ContextVar('planning_diagnostics', default=F
 VIDEO_PROJECTS = ProjectService(Path(CFG.data_dir) / 'video-projects.json')
 from reference_videos import ReferenceService, extraction_capability, MAX_FILE, MAX_BODY, MIMES
 REFERENCES = ReferenceService(VIDEO_PROJECTS, store, Path(CFG.data_dir) / 'reference-scratch')
+from shorts import ShortsService, Draft, DraftUpdate
+SHORTS = ShortsService(VIDEO_PROJECTS)
 
 
 class ReferenceBodyLimit:
@@ -2644,6 +2646,115 @@ def get_project_captions(pid: str, format: str = 'srt', principal=Depends(auth))
     text = captions(p['scenes'], format)
     return Response(text, media_type='text/vtt' if format == 'vtt' else 'application/x-subrip',
                     headers={'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment; filename="captions.' + format + '"'})
+
+
+# Shorts are local editorial renders, never generation-provider submissions.
+@app.get('/v1/video-projects/{pid}/shorts/capability')
+def shorts_capability(pid: str, principal=Depends(auth)):
+    from shorts_render import capability
+    VIDEO_PROJECTS.get(_owner(principal), pid)
+    return capability()
+
+
+@app.get('/v1/video-projects/{pid}/shorts')
+def list_shorts(pid: str, principal=Depends(auth)):
+    return SHORTS.list(_owner(principal), pid)
+
+
+@app.post('/v1/video-projects/{pid}/shorts', status_code=201)
+def create_short(pid: str, req: Draft, principal=Depends(auth)):
+    return SHORTS.create(_owner(principal), pid, req.model_dump())
+
+
+@app.get('/v1/video-projects/{pid}/shorts/{sid}')
+def get_short(pid: str, sid: str, principal=Depends(auth)):
+    return SHORTS.get(_owner(principal), pid, sid)
+
+
+@app.patch('/v1/video-projects/{pid}/shorts/{sid}')
+def update_short(pid: str, sid: str, req: DraftUpdate, principal=Depends(auth)):
+    return SHORTS.update(_owner(principal), pid, sid, req.model_dump())
+
+
+@app.get('/v1/video-projects/{pid}/shorts/{sid}/frame')
+def short_frame(pid: str, sid: str, revision: int, at: float = 0., principal=Depends(auth)):
+    from shorts_render import preview_frame
+    import subprocess
+    owner = _owner(principal)
+    s = SHORTS.get(owner, pid, sid)
+    VIDEO_PROJECTS.revision(s, revision)
+    if not s['source_current']:
+        raise HTTPException(409, 'Source changed; explicitly save a fresh draft')
+    if not SHORTS.preview_slots.acquire(blocking=False):
+        raise HTTPException(429, 'Frame preview capacity reached')
+    try:
+        data = preview_frame(store, owner, s, Path(CFG.data_dir) / 'short-scratch', at)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        raise HTTPException(409, 'Source frame unavailable; check selected media') from None
+    finally:
+        SHORTS.preview_slots.release()
+    return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'private, no-store'})
+
+
+@app.post('/v1/video-projects/{pid}/shorts/{sid}/renders', status_code=202)
+def render_short_project(pid: str, sid: str, req: Submission, principal=Depends(auth)):
+    from shorts_render import render_short, require_capability
+    owner, version = _owner(principal), principal.get('key_version')
+    def preflight():
+        s = SHORTS.get(owner, pid, sid)
+        require_capability(s['burn_captions'])
+        _project_preflight(principal)
+    def renderer(snapshot):
+        authority = OutstandingJob(owner, version)
+        mid = None
+        try:
+            authority.check()
+            mid = render_short(store, owner, snapshot, Path(CFG.data_dir) / 'short-scratch')
+            authority.check()
+            if store.media_owner(mid) != owner:
+                raise ValueError('Output ownership invalid')
+            return mid
+        except BaseException:
+            if mid:
+                store.delete_media(mid, owner_id=owner)
+            raise
+        finally:
+            authority.release()
+    return SHORTS.render(owner, pid, sid, req.model_dump(), renderer, preflight)
+
+
+@app.get('/v1/video-projects/{pid}/shorts/{sid}/renders/{rid}')
+def short_receipt(pid: str, sid: str, rid: str, principal=Depends(auth)):
+    return SHORTS.job(_owner(principal), pid, sid, rid)
+
+
+@app.post('/v1/video-projects/{pid}/shorts/{sid}/renders/{rid}/approve')
+def approve_short(pid: str, sid: str, rid: str, req: Revision, principal=Depends(auth)):
+    return SHORTS.approve(_owner(principal), pid, sid, rid, req.revision)
+
+
+@app.get('/v1/video-projects/{pid}/shorts/{sid}/renders/{rid}/captions')
+def short_captions(pid: str, sid: str, rid: str, format: str = 'srt', principal=Depends(auth)):
+    from shorts_render import caption_text
+    job = SHORTS.job(_owner(principal), pid, sid, rid)
+    text = caption_text(job['snapshot'], format)
+    return Response(text, media_type='text/vtt' if format == 'vtt' else 'application/x-subrip',
+                    headers={'Cache-Control': 'private, no-store', 'Content-Disposition': f'attachment; filename="captions.{format}"'})
+
+
+@app.get('/v1/video-projects/{pid}/shorts/{sid}/renders/{rid}/video')
+def short_video(pid: str, sid: str, rid: str, principal=Depends(auth)):
+    owner = _owner(principal)
+    job = SHORTS.job(owner, pid, sid, rid)
+    mid = job['media_id']
+    if job['status'] != 'completed' or not mid or store.media_owner(mid) != owner:
+        raise HTTPException(404, 'Rendered Short unavailable')
+    with store.open_media(mid) as source:
+        data = source.read(256 * 1024**2 + 1)
+    if len(data) > 256 * 1024**2:
+        raise HTTPException(409, 'Rendered Short size invalid')
+    return Response(data, media_type='video/mp4', headers={'Cache-Control': 'private, no-store',
+                    'Content-Disposition': 'inline; filename="short.mp4"'})
 
 
 @app.get('/v1/video-projects/{pid}')

@@ -92,6 +92,16 @@ with tempfile.TemporaryDirectory(dir='/app/data') as directory:
         def write_media(self, mid, data, owner): (root/mid).write_bytes(data)
     mid = render_mp4(Store(),'fixture',[dict(media_id='clip.mp4',audio_media_id='speech.wav',duration=1)],'16:9',root)
     assert (root/mid).stat().st_size > 1000
+    # Packaged libass/fonts and real Vietnamese burn, not filter-list inference.
+    from shorts_render import capability, render_short, preview_frame
+    cap = capability()
+    assert cap['available'] and cap['burn_captions'], cap
+    snapshot = dict(start=0., end=1., crop_x=.7, burn_captions=True,
+                    source=dict(scenes=[dict(scene_id='s', take_id='t', media_id='clip.mp4', duration=1,
+                                           narration='Xin chào Việt Nam', audio=dict(media_id='speech.wav',duration=.5))]))
+    assert preview_frame(Store(),'fixture',snapshot,root,0.)[:2] == bytes([255,216])
+    short = render_short(Store(),'fixture',snapshot,root)
+    assert (root/short).stat().st_size > 1000
 '''
             subprocess.run(['docker', 'exec', name, 'python', '-c', packaged_check], check=True)
             assert request('/v1/video-projects', key) == {'projects': []}
