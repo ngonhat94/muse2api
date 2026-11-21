@@ -1,5 +1,9 @@
 [
   [
+    "test_planning_diagnostics.py",
+    []
+  ],
+  [
     "test_video_project_contract.py",
     []
   ],
