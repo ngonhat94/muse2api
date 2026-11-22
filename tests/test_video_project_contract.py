@@ -5,6 +5,65 @@ import app
 
 
 class ProjectContractTest(unittest.TestCase):
+    def test_first_frame_isolation_review_and_exact_generation_input(self):
+        import base64
+        import io
+        from PIL import Image
+        from unittest.mock import patch
+        from uuid import uuid4
+
+        client = TestClient(app.app)
+        _, key = app.users.create('Frame editor')
+        _, other = app.users.create('Other frame editor')
+        auth = {'Authorization': 'Bearer ' + key}
+        foreign = {'Authorization': 'Bearer ' + other}
+        def ok(r):
+            self.assertEqual(r.status_code, 200, r.text[:80])
+            return r.json()
+        p = ok(client.post('/v1/video-projects', headers=auth, json={'title': 'Frames', 'idea': 'Colors'}))
+        path = '/v1/video-projects/' + p['id']
+        scenes = [dict(order=i, prompt='Colors', narration='', duration=1) for i in (1, 2)]
+        p = ok(client.patch(path, headers=auth, json=dict(revision=p['revision'], scenes=scenes, script='Colors')))
+        for scene, saved in zip(scenes, p['scenes']):
+            scene.update(id=saved['id'], approved=True)
+        p = ok(client.patch(path, headers=auth, json=dict(revision=p['revision'], scenes=scenes, script_approved=True)))
+        endpoints = [path + '/scenes/' + s['id'] + '/first-frame' for s in scenes]
+        def upload(index, color):
+            out = io.BytesIO()
+            Image.new('RGB', (32, 24), color).save(out, 'PNG')
+            return ok(client.post(endpoints[index], params={'revision':p['revision']}, headers=auth, content=out.getvalue()))
+        def approve(index):
+            frame = p['scenes'][index]['first_frame']['id']
+            return ok(client.post(endpoints[index]+'/'+frame+'/approve', params={'revision':p['revision']}, headers=auth))
+        for n,color in enumerate(('red','blue')):
+            p = upload(n,color)
+            p = approve(n)
+        original = p['scenes'][0]['first_frame']['id']
+        second = p['scenes'][1]['first_frame']
+        p = upload(0,'green')
+        self.assertEqual(p['scenes'][1]['first_frame'], second)
+        self.assertEqual(client.post(endpoints[0]+'/'+original+'/approve', params={'revision':p['revision']}, headers=auth).status_code, 409)
+        curr = p['scenes'][0]['first_frame']['id']
+        frame_url = endpoints[0]+'/'+curr
+        self.assertEqual(client.get(frame_url, headers=foreign).status_code, 404)
+        self.assertEqual(client.get(frame_url).status_code, 401)
+        self.assertEqual(client.get(endpoints[1]+'/'+curr, headers=auth).status_code, 404)
+        image = client.get(frame_url, headers=auth).content
+        generate = endpoints[0].removesuffix('/first-frame')+'/generate'
+        req = dict(revision=p['revision'], request_id=str(uuid4()))
+        self.assertEqual(client.post(generate, headers=auth, json=req).status_code, 409)
+        p = approve(0)
+        # Ordinary scene edits preserve server-owned review state.
+        p = ok(client.patch(path, headers=auth, json=dict(revision=p['revision'], scenes=scenes)))
+        req['revision'] = p['revision']
+        with patch.object(app,'create_video') as submit, patch.object(app.store,'pick_account',return_value={'id':'fixture'}):
+            p = ok(client.post(generate, headers=auth, json=req))
+            ok(client.post(generate, headers=auth, json=req))
+            submit.assert_awaited_once()
+            self.assertEqual(base64.b64decode(submit.await_args.args[0].reference_image.split(',')[1]),image)
+            self.assertEqual(p['scenes'][0]['attempts'][0]['first_frame_id'],curr)
+        self.assertEqual(client.post(endpoints[0], params={'revision':p['revision']}, headers=auth,content=b'broken').status_code,422)
+
     def test_generation_capability_and_revocation_over_http(self):
         client = TestClient(app.app)
         admin = {'Authorization': 'Bearer ' + app.CFG.api_key}
