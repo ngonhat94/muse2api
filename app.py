@@ -2831,17 +2831,62 @@ async def _project_planner(project, principal):
     return planning_content(result)
 
 
+@app.post('/v1/video-projects/{pid}/scenes/{sid}/first-frame')
+@_bounded_reference
+async def replace_first_frame(pid: str, sid: str, revision: int, request: Request, principal=Depends(auth)):
+    from first_frames import MAX_UPLOAD, canonical_image, edit_frame, find_scene
+    owner = _owner(principal)
+    with VIDEO_PROJECTS.lock:
+        project = VIDEO_PROJECTS.owned(owner, pid)
+        VIDEO_PROJECTS.revision(project, revision)
+        find_scene(project, sid)
+    job = _REFERENCE_JOB.get()
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_UPLOAD:
+            raise HTTPException(413, 'First frame exceeds 8 MiB')
+        data.extend(chunk)
+    image = await asyncio.to_thread(canonical_image, data)
+    return await asyncio.to_thread(edit_frame, VIDEO_PROJECTS, store, owner, pid, sid,
+                                  revision, image=image, check=job.check)
+
+
+@app.get('/v1/video-projects/{pid}/scenes/{sid}/first-frame/{frame_id}')
+def project_first_frame(pid: str, sid: str, frame_id: str, principal=Depends(auth)):
+    from first_frames import find_scene, read_frame
+    owner = _owner(principal)
+    with VIDEO_PROJECTS.lock:
+        frame = find_scene(VIDEO_PROJECTS.owned(owner, pid), sid).get('first_frame')
+        if not frame or frame['id'] != frame_id:
+            raise HTTPException(404, 'First frame not found')
+        return Response(read_frame(store, owner, frame), media_type='image/jpeg',
+                        headers={'Cache-Control': 'private, no-store'})
+
+
+@app.post('/v1/video-projects/{pid}/scenes/{sid}/first-frame/{frame_id}/approve')
+def approve_first_frame(pid: str, sid: str, frame_id: str, revision: int, principal=Depends(auth)):
+    from first_frames import edit_frame
+    owner = _owner(principal)
+    job = OutstandingJob(owner, principal.get('key_version'))
+    try:
+        return edit_frame(VIDEO_PROJECTS, store, owner, pid, sid, revision, approve_id=frame_id, check=job.check)
+    finally:
+        job.release()
+
+
 @app.post('/v1/video-projects/{pid}/scenes/{sid}/generate')
 async def generate_project_scene(pid: str, sid: str, req: Submission, principal=Depends(auth)):
+    from first_frames import generation_reference
     async def submit(task_id, scene):
         token = _IDEMPOTENT_ADMISSION.set({'id': task_id})
         try:
             await create_video(VideoRequest(prompt=scene['prompt'], duration=scene['duration'],
-                                           aspect_ratio=scene['aspect_ratio']), _=principal)
+                                           aspect_ratio=scene['aspect_ratio'], reference_image=scene['reference_image']), _=principal)
         finally:
             _IDEMPOTENT_ADMISSION.reset(token)
     await VIDEO_PROJECTS.generate(_owner(principal), pid, sid, req.model_dump(), submit,
-                                  lambda: _project_preflight(principal, generation=True))
+                                  lambda: _project_preflight(principal, generation=True),
+                                  frame_reference=lambda frame: generation_reference(store, _owner(principal), frame))
     return _project_view(pid, principal)
 
 

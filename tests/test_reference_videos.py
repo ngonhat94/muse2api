@@ -91,6 +91,11 @@ class ReferenceVideosTest(unittest.TestCase):
             imported = client.post('/v1/reference-videos/'+job['id']+'/import', json=request)
             self.assertEqual(imported.status_code, 200, imported.text)
             p = imported.json()
+            self.assertEqual(p['first_frame_mode'], 'review')
+            scene = p['scenes'][0]
+            self.assertFalse(scene['first_frame']['approved'])
+            image = client.get(f"/v1/video-projects/{p['id']}/scenes/{scene['id']}/first-frame/{scene['first_frame']['id']}")
+            self.assertEqual(image.content, thumb.content)
             self.assertEqual(client.get('/v1/video-projects/'+p['id']).json()['scenes'], p['scenes'])
             self.assertEqual(client.post('/v1/reference-videos/'+job['id']+'/import', json=request).json()['id'], p['id'])
             identity = {'id': 'bob', 'key_version': 1}
@@ -211,6 +216,7 @@ class ReferenceVideosTest(unittest.TestCase):
         from tools.build_desktop import ENGINE_SOURCES
         from reference_videos import extraction_capability
         from unittest.mock import patch
+        self.assertIn('first_frames.py', ENGINE_SOURCES)
         self.assertIn('reference_videos.py', ENGINE_SOURCES)
         self.assertIn('video_projects.py', ENGINE_SOURCES)
         with patch('reference_videos.shutil.which', return_value=None):

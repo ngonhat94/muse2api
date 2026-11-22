@@ -105,3 +105,14 @@ Only stable media IDs persist in projects. Signed URLs are generated on reads, n
 Capability failures: generation/planning require an available tenant account and incumbent generation authority; rendering requires ffmpeg and ffprobe on PATH. Unavailable capabilities return 503/400 with a manual-edit/recovery message. Admission checks existing tenant storage and heavy-request limits. Output writes use the incumbent atomic owner/quota media writer. Exhausted quota returns 507 before submission, or a failed render if quota changes while rendering. Missing/unowned/unsafe media cannot be rendered.
 
 Rendering accepts no paths, URLs, filter expressions, executable names, or remote media from the client. It copies opened owned local files into isolated scratch, probes local streams, normalizes to 1280x720 or 720x1280 at 24fps H.264/AAC, retains source audio (silence when absent), and concatenates simple cuts. Narration is planning text only: no TTS, music, subtitles, or timeline editor. Each clip is bounded by requested duration; shorter sources are padded. Process wall-time, input/output size, scene count and total duration are bounded. There are no dependency installs or runtime/deployment changes in this feature.
+
+## Scene first-frame review
+
+Project snapshots expose `first_frame_mode`. Existing and new text-only projects return `text`. Uploading the first image switches the project to `review`. New reference-video imports reuse each selected shot’s owned representative JPEG as an unapproved starting image. Each scene in review mode requires its own approved frame before generating a clip, in addition to script and scene approval. Existing takes stay available.
+
+Under `/v1/video-projects/{pid}/scenes/{sid}/first-frame`, all routes require the project owner:
+
+- POST with query `revision` and raw still-image bytes (PNG, JPEG or WebP, up to 8 MiB and 16 megapixels) stores an orientation-corrected JPEG up to 2560 px. The scene’s `first_frame` contains the immutable media ID and `approved: false`. Replacing an image affects only this scene. A stale revision returns 409.
+- GET `/{frame_id}` serves the current JPEG with private, no-store caching. Foreign projects and mismatched frame IDs return 404.
+- POST `/{frame_id}/approve?revision=…` approves that specific image and records its digest. Frame edits return the updated project snapshot. After an uncertain edit response, GET the project before making another edit.
+- Generation snapshots the verified JPEG before persisting the usual UUID receipt and passes those exact bytes as the sole starting image to the existing video provider. Attempts record `first_frame_id`. Missing, expired, changed or unapproved input blocks admission with 409. Reloads and UUID replays do not invoke generation.

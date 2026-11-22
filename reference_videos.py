@@ -244,6 +244,10 @@ class ReferenceService:
                           'No semantic analysis performed. Describe subject, setting, action and camera before approving.')
                 p['scenes'].append(dict(id=uuid.uuid4().hex, order=order, narration='', prompt=prompt,
                                         duration=duration, approved=False, selected_attempt_id=None, attempts=[]))
+                media = job.get('media', {}).get(shot['id'])
+                if media:
+                    p['scenes'][-1]['first_frame'] = {'id': media, 'approved': False}
+                    p['first_frame_mode'] = 'review'
             before = copy.deepcopy(self.projects.data)
             try:
                 self.projects.data['projects'][p['id']] = p

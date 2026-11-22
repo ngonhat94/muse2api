@@ -332,6 +332,7 @@ class ProjectService:
     def public(p):
         result = copy.deepcopy({k: v for k, v in p.items() if k != 'owner_id'})
         result.setdefault('audio_mode', 'legacy')
+        result.setdefault('first_frame_mode', 'text')
         return result
 
     def get(self, owner, pid):
@@ -424,7 +425,7 @@ class ProjectService:
             return key, True
         return key, False
 
-    async def generate(self, owner, pid, sid, request, submit, preflight=lambda: None):
+    async def generate(self, owner, pid, sid, request, submit, preflight=lambda: None, *, frame_reference=None):
         with self.lock:
             p = self.owned(owner, pid)
             key, replay = self.receipt(owner, pid, 'generate:' + sid, request)
@@ -438,13 +439,21 @@ class ProjectService:
                 raise HTTPException(409, 'Approve the script and scene before generating')
             if len(scene['attempts']) >= 50:
                 raise HTTPException(429, 'Scene attempt limit reached')
+            frame = scene.get('first_frame')
+            reference = None
+            if p.get('first_frame_mode') == 'review' or frame:
+                if not frame or not frame['approved'] or frame_reference is None:
+                    raise HTTPException(409, 'Review the scene first frame before generating')
+                reference = frame_reference(frame)
             preflight()
             aid = uuid.uuid4().hex
             attempt = dict(id=aid, task_id=aid, status='queued', media_id=None, url=None, error=None)
+            if frame:
+                attempt['first_frame_id'] = frame['id']
             scene['attempts'].append(attempt)
             self.data['requests'][key] = {'project': pid, 'action': 'generate:' + sid, 'id': aid}
             self.changed(p)  # WAL: save authorization before any upstream submission.
-            snapshot = dict(copy.deepcopy(scene), aspect_ratio=p['aspect_ratio'])
+            snapshot = dict(copy.deepcopy(scene), aspect_ratio=p['aspect_ratio'], reference_image=reference)
         try:
             await submit(aid, snapshot)
         except BaseException:
@@ -776,6 +785,8 @@ class ProjectService:
                     seen.add(sid)
                     old = existing.get(sid)
                     new = dict(s, id=sid, attempts=copy.deepcopy(old['attempts']) if old else [])
+                    if old and old.get('first_frame'):
+                        new['first_frame'] = copy.deepcopy(old['first_frame'])
                     if old and old.get('narration_audio'):
                         new['narration_audio'] = copy.deepcopy(old['narration_audio'])
                         from narration import binding
