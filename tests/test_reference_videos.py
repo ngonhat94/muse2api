@@ -267,6 +267,35 @@ class ReferenceVideosTest(unittest.TestCase):
         for shot in shots:
             self.assertTrue(Path(shot['file']).read_bytes().startswith(b'\xff\xd8'))
 
+    def test_scene_detection_uses_remaining_analysis_budget(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from reference_videos import extract_video
+
+        info = dict(streams=[dict(codec_type='video', width=160, height=90,
+                                  avg_frame_rate='30/1')],
+                    format=dict(duration='2'))
+
+        def run(args, **kwargs):
+            if args[0] == 'ffprobe':
+                return SimpleNamespace(stdout=json.dumps(info).encode())
+            if args[-1].endswith('.jpg'):
+                Path(args[-1]).write_bytes(b'jpeg-fixture')
+            return SimpleNamespace(stdout=b'')
+
+        for times, expected in [
+            ([100, 101, 102, 103], [30, 120, 30]),
+            ([100, 101, 300, 339], [30, 40, 1]),
+        ]:
+            with (
+                self.subTest(times=times),
+                patch('reference_videos.time.monotonic', side_effect=times),
+                patch('reference_videos.subprocess.run', side_effect=run) as proc,
+            ):
+                shots = extract_video(self.root/'synthetic.mp4', self.root, lambda _: None)
+                self.assertEqual(len(shots), 1)
+                self.assertEqual([c.kwargs['timeout'] for c in proc.call_args_list], expected)
+
 
 if __name__ == '__main__':
     unittest.main()
