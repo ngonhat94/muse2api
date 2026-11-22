@@ -4,7 +4,23 @@ Canonical backend contract for the companion Flutter client. Additive to video-p
 
 ## Discovery and provider
 
-Existing production requirements include `requests`; neither edge-tts nor a speech runtime is packaged. This implementation uses OpenAI's actual HTTPS `POST /v1/audio/speech` binary PCM interface (signed 16-bit little-endian mono 24 kHz, wrapped into validated WAV server-side) through requests (no SDK/new dependency). It does **not** use Muse browser chat. Disabled by default. Server-only environment: `MUSE_TTS_PROVIDER=openai`, `MUSE_TTS_API_KEY`, optional `MUSE_TTS_MODEL` (default `gpt-4o-mini-tts`) and `MUSE_TTS_VOICE` (default `coral`). Endpoint fixed to api.openai.com, no client URL/key/voice override, no redirects/retries/fallback. No live provider call is part of verification. OpenAI currently documents this Speech API model as deprecated with shutdown January 6, 2027; this is a bounded existing-interface adapter, not a Realtime API integration. Operator must replace/migrate it before that deadline (https://developers.openai.com/api/docs/guides/text-to-speech). Clearly disclose AI-generated speech to end users. Operator must configure credentials and approve billing before use.
+Existing production requirements include `requests`; neither edge-tts nor a speech runtime is packaged. The OpenAI adapter uses OpenAI's actual HTTPS `POST /v1/audio/speech` binary PCM interface (signed 16-bit little-endian mono 24 kHz, wrapped into validated WAV server-side) through requests (no SDK/new dependency). It does **not** use Muse browser chat. Disabled by default. Server-only environment: `MUSE_TTS_PROVIDER=openai`, `MUSE_TTS_API_KEY`, optional `MUSE_TTS_MODEL` (default `gpt-4o-mini-tts`) and `MUSE_TTS_VOICE` (default `coral`). Endpoint fixed to api.openai.com, no client URL/key/voice override, no redirects/retries/fallback. Offline tests never call a provider. OpenAI currently documents this Speech API model as deprecated with shutdown January 6, 2027; this is a bounded existing-interface adapter, not a Realtime API integration. Operator must replace/migrate it before that deadline (https://developers.openai.com/api/docs/guides/text-to-speech). Clearly disclose AI-generated speech to end users. Operator must configure credentials and approve billing before use.
+
+### VieNeu-TTS on a Gradio VPS
+
+Set these on the Muse backend and restart it after configuration:
+
+```sh
+MUSE_TTS_PROVIDER=vieneu-gradio
+MUSE_TTS_GRADIO_URL=https://your-vieneu-host.example
+MUSE_TTS_VOICE="Thiện Minh"
+```
+
+Use the HTTPS origin of the Gradio web UI. Load the model in VieNeu and select an installed preset voice ID for the server configuration. Muse uses one preset per backend. The loaded model is managed on the VPS, so its identifier is left null in the scene record. Provider configuration and the capability check do not load models or start synthesis.
+
+The adapter targets the VieNeu Gradio 5.49.1 preset speech handler. It submits the scene text once to `/gradio_api/call/wrapper`, reads its event stream, then downloads the completed WAV from the same origin. The raw request includes both hidden Gradio State slots. Only a final Gradio temporary WAV path is accepted. Redirects, reference uploads, cookies, OpenAI credentials and automatic retries are disabled. The existing scene duration and WAV limits apply. A provider error, timeout or incompatible Gradio handler fails the accepted attempt. Read the existing Muse receipt before considering another submission.
+
+The VPS receives the scene text and caches generated files under its own access and retention rules. Restrict the VPS ingress to the Muse backend for private projects. The authenticated Muse audio route protects the copy stored by Muse. Flutter uses the existing capability provider field (`vieneu-gradio`) to identify the destination in its consent dialog.
 
 ## Wire contract
 

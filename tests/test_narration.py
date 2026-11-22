@@ -94,6 +94,60 @@ class NarrationTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 OpenAISpeech().generate('Hi', 1)
 
+    def test_vieneu_gradio_single_submission_and_private_download(self):
+        import json
+        import os
+        from unittest.mock import MagicMock
+        from narration import speech_adapter, capability
+        origin = 'https://tts.example.test'
+        event = 'e' * 32
+        path = '/data/tmp/gradio/' + 'a' * 64 + '/audio.wav'
+
+        def response(data):
+            obj = MagicMock()
+            obj.__enter__.return_value = obj
+            obj.status_code = 200
+            obj.iter_content.return_value = [data]
+            return obj
+
+        with patch.dict(os.environ, {'MUSE_TTS_PROVIDER': 'vieneu-gradio', 'MUSE_TTS_GRADIO_URL': origin,
+                                     'MUSE_TTS_VOICE': 'Thiện Minh'}, clear=False), patch('narration.requests.Session') as factory:
+            adapter = speech_adapter()
+            self.assertEqual(capability()['provider'], 'vieneu-gradio')
+            transport = factory.return_value.__enter__.return_value
+            transport.post.return_value = response(json.dumps({'event_id': event}).encode())
+            file = {'path': path, 'url': 'https://untrusted.example/audio.wav'}
+            sse = 'event: generating\ndata: [null]\n\nevent: complete\ndata: ' + json.dumps([file]) + '\n\n'
+            transport.get.side_effect = [response(sse.encode()), response(audio_fixture())]
+            self.assertEqual(adapter.generate('Xin chào', 1), (audio_fixture(), .5))
+            args, kwargs = transport.post.call_args
+            self.assertEqual(args, (origin + '/gradio_api/call/wrapper',))
+            self.assertEqual(kwargs['json']['data'], ['Xin chào', 'Thiện Minh', None, None, None,
+                             'Standard (Một lần)', False, 1, .8, 256, True, None])
+            self.assertEqual([c.args[0] for c in transport.get.call_args_list],
+                             [args[0] + '/' + event, origin + '/gradio_api/file=' + path])
+            self.assertFalse(transport.trust_env)
+            for call in [transport.post.call_args, *transport.get.call_args_list]:
+                self.assertFalse(call.kwargs['allow_redirects'])
+                self.assertNotIn('headers', call.kwargs)
+            self.assertEqual(transport.post.call_count, 1)
+
+    def test_vieneu_rejects_bad_origin_events_and_file_paths(self):
+        import os
+        import json
+        from fastapi import HTTPException
+        from narration import VieNeuSpeech
+        for origin in ('http://tts.test', 'https://user@tts.test', 'https://tts.test/proxy', ''):
+            with self.subTest(origin=origin), patch.dict(os.environ, {'MUSE_TTS_GRADIO_URL': origin}):
+                with self.assertRaises(HTTPException):
+                    VieNeuSpeech().preflight()
+        for file in (None, {'url': 'https://tts.test/a.wav'}, {'path': '/etc/passwd'},
+                     {'path': '/tmp/gradio/' + 'a' * 64 + '/../x.wav'}):
+            with self.subTest(file=file), self.assertRaises(ValueError):
+                VieNeuSpeech._audio_path('event: complete\ndata: ' + json.dumps([file]))
+        with self.assertRaises(ValueError):
+            VieNeuSpeech._audio_path('event: error\ndata: null')
+
     def test_concurrent_edit_capacity_uuid_conflict_and_no_secret_persistence(self):
         import threading
         from video_projects import ProjectService

@@ -2581,9 +2581,9 @@ def narration_capability(principal=Depends(auth)):
 
 @app.post('/v1/video-projects/{pid}/scenes/{sid}/narration')
 def narrate_project_scene(pid: str, sid: str, req: NarrationSubmission, principal=Depends(auth)):
-    from narration import OpenAISpeech
+    from narration import speech_adapter
     owner, version = _owner(principal), principal.get('key_version')
-    adapter = OpenAISpeech()
+    adapter = speech_adapter()
     def preflight():
         adapter.preflight()
         _project_preflight(principal)
@@ -2597,14 +2597,14 @@ def narrate_project_scene(pid: str, sid: str, req: NarrationSubmission, principa
             mid = 'narration_' + uuid.uuid4().hex + '.wav'
             store.write_media(mid, data, owner)
             job.check()
-            return dict(media_id=mid, duration=duration, provider='openai', model=adapter.model, voice=adapter.voice)
+            return dict(media_id=mid, duration=duration, provider=adapter.provider, model=adapter.model, voice=adapter.voice)
         except BaseException:
             if mid:
                 store.delete_media(mid, owner_id=owner)
             raise
         finally:
             job.release()
-    return VIDEO_PROJECTS.narrate(owner, pid, sid, req.model_dump(), synthesize, preflight)
+    return VIDEO_PROJECTS.narrate(owner, pid, sid, req.model_dump(), synthesize, preflight, provider=adapter.provider)
 
 
 def _project_audio_bytes(owner, scene):

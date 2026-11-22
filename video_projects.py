@@ -603,7 +603,7 @@ class ProjectService:
             raise HTTPException(502, 'Planning unavailable or invalid draft. Your project is unchanged; edit script and scenes manually.') from None
         return self.patch(owner, pid, fields)
 
-    def narrate(self, owner, pid, sid, request, synthesize, preflight=lambda: None):
+    def narrate(self, owner, pid, sid, request, synthesize, preflight=lambda: None, *, provider='openai'):
         from narration import binding
         fields = validated(NarrationSubmission, request)
         with self.lock:
@@ -628,7 +628,7 @@ class ProjectService:
             preflight()
             jid = uuid.uuid4().hex
             scene['narration_audio'] = dict(id=jid, request_id=fields['request_id'], status='queued',
-                source_revision=binding(scene), provider='openai', model=None, voice=None,
+                source_revision=binding(scene), provider=provider, model=None, voice=None,
                 media_id=None, duration=None, error=None, error_code=None)
             p['audio_mode'] = 'spoken'
             if p['render']:
