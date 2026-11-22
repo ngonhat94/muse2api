@@ -148,6 +148,45 @@ class NarrationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             VieNeuSpeech._audio_path('event: error\ndata: null')
 
+    def test_authenticated_voice_catalog_selection_and_replay(self):
+        import app
+        import os
+        from narration import VieNeuSpeech
+        from fastapi.testclient import TestClient
+        from uuid import uuid4
+        client = TestClient(app.app)
+        _, key = app.users.create('Synthetic voice picker')
+        headers = {'Authorization': 'Bearer ' + key}
+        route = '/v1/video-projects/narration-voices'
+        self.assertEqual(client.get(route).status_code, 401)
+        project = client.post('/v1/video-projects', headers=headers, json={'title': 'Demo', 'idea': 'Sky'}).json()
+        path = '/v1/video-projects/' + project['id']
+        project = client.patch(path, headers=headers, json={'revision': project['revision'], 'script': 'Hi',
+            'scenes': [{'order': 0, 'narration': 'Hi', 'prompt': 'Sky', 'duration': 1}]}).json()
+        action = path + '/scenes/' + project['scenes'][0]['id'] + '/narration'
+        request = dict(revision=project['revision'], request_id=str(uuid4()), confirm_cost=True, voice='Trúc Ly')
+        events = 'event: complete\ndata: [{"choices":[["Giọng nữ","Trúc Ly"],["Nam","Thiện Minh"]]}]\n\n'
+        with patch.dict(os.environ, {'MUSE_TTS_PROVIDER': 'vieneu-gradio', 'MUSE_TTS_GRADIO_URL': 'https://tts.test'}), \
+             patch.object(VieNeuSpeech, '_call', return_value=events) as metadata, \
+             patch.object(VieNeuSpeech, 'generate', autospec=True, return_value=(audio_fixture(), .5)) as generate:
+            self.assertEqual(client.get(route, headers=headers).json()['voices'][0], {'id': 'Trúc Ly', 'label': 'Giọng nữ'})
+            self.assertEqual(metadata.call_args.args[1:3], ('_srt_voices', []))
+            generate.assert_not_called()
+            self.assertEqual(client.post(action, headers=headers, json=request).status_code, 200)
+            for thread in app.VIDEO_PROJECTS.threads:
+                thread.join(5)
+            self.assertEqual(client.get(path, headers=headers).json()['scenes'][0]['narration_audio']['voice'], 'Trúc Ly')
+            self.assertEqual(generate.call_args.args[0].voice, 'Trúc Ly')
+            self.assertEqual(client.post(action, headers=headers, json=request).status_code, 200)
+            self.assertEqual(client.post(action, headers=headers, json=dict(request, voice='Thiện Minh')).status_code, 409)
+            revision = client.get(path, headers=headers).json()['revision']
+            unknown = dict(request, voice='missing', request_id=str(uuid4()), revision=revision)
+            self.assertEqual(client.post(action, headers=headers, json=unknown).status_code, 200)
+            for thread in app.VIDEO_PROJECTS.threads:
+                thread.join(5)
+            self.assertEqual(client.get(path + '/requests/' + unknown['request_id'], headers=headers).json()['status'], 'failed')
+            generate.assert_called_once()
+
     def test_concurrent_edit_capacity_uuid_conflict_and_no_secret_persistence(self):
         import threading
         from video_projects import ProjectService

@@ -116,7 +116,6 @@ class VieNeuSpeech:
         self.preflight()
         if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
             raise ValueError('Invalid narration text')
-        endpoint = self.origin + '/gradio_api/call/wrapper'
         # The raw Gradio 5 /call protocol requires slots for both hidden State
         # inputs (mode and session), even though /info omits them.
         inputs = [text, self.voice, None, None, None, 'Standard (Một lần)',
@@ -125,32 +124,65 @@ class VieNeuSpeech:
         deadline = time.monotonic() + 180
         with requests.Session() as session:
             session.trust_env = False
-            with session.post(endpoint, json={'data': inputs}, **options) as response:
-                event_id = json.loads(_bounded_body(response, 1024, deadline)).get('event_id')
-            if not isinstance(event_id, str) or not re.fullmatch('[0-9a-f]{32}', event_id):
-                raise ValueError('Invalid Gradio event')
-            with session.get(endpoint + '/' + event_id, **options) as response:
-                events = _bounded_body(response, 128 * 1024, deadline).decode('utf-8')
+            events = self._call(session, 'wrapper', inputs, options, deadline)
             path = self._audio_path(events)
             # Rebuild on the configured origin. Never follow a provider-supplied URL.
             with session.get(self.origin + '/gradio_api/file=' + path, **options) as response:
                 data = _bounded_body(response, MAX_AUDIO, deadline)
         return data, validate_audio(data, maximum)
 
+    def _call(self, session, handler, inputs, options, deadline):
+        endpoint = self.origin + '/gradio_api/call/' + handler
+        with session.post(endpoint, json={'data': inputs}, **options) as response:
+            ticket = json.loads(_bounded_body(response, 1024, deadline))
+            event_id = ticket.get('event_id') if isinstance(ticket, dict) else None
+        if not isinstance(event_id, str) or not re.fullmatch('[0-9a-f]{32}', event_id):
+            raise ValueError('Invalid Gradio event')
+        with session.get(endpoint + '/' + event_id, **options) as response:
+            events = _bounded_body(response, 128 * 1024, deadline).decode('utf-8')
+        return events
+
+    def voices(self):
+        self.preflight()
+        try:
+            with requests.Session() as session:
+                session.trust_env = False
+                events = self._call(session, '_srt_voices', [], dict(
+                    timeout=(3, 8), stream=True, allow_redirects=False), time.monotonic() + 15)
+            choices = self._result(events)[0]['choices']
+            if not isinstance(choices, list) or len(choices) > 500:
+                raise ValueError()
+            catalog = {}
+            for entry in choices:
+                if not isinstance(entry, list) or len(entry) != 2:
+                    continue
+                label, voice = entry
+                if (isinstance(label, str) and isinstance(voice, str) and
+                        0 < len(voice) <= 128 and 0 < len(label) <= 512 and
+                        voice.isprintable() and label.isprintable()):
+                    catalog[voice] = label
+            return catalog
+        except (requests.RequestException, ValueError, TypeError, IndexError, KeyError):
+            raise HTTPException(503, 'Voice catalog unavailable') from None
+
     @staticmethod
-    def _audio_path(events):
+    def _result(events):
         for frame in events.replace('\r\n', '\n').split('\n\n'):
             lines = frame.splitlines()
             if 'event: error' in lines:
                 break
             if 'event: complete' in lines:
                 payload = '\n'.join(line[5:].lstrip() for line in lines if line.startswith('data:'))
-                result = json.loads(payload)
-                if isinstance(result, list) and result and isinstance(result[0], dict):
-                    path = result[0].get('path')
-                    if isinstance(path, str) and re.fullmatch(r'/(?:data/)?tmp/gradio/[0-9a-f]{32,64}/[A-Za-z0-9_-]+\.wav', path):
-                        return path
-                break
+                return json.loads(payload)
+        raise ValueError('Gradio request failed')
+
+    @staticmethod
+    def _audio_path(events):
+        result = VieNeuSpeech._result(events)
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            path = result[0].get('path')
+            if isinstance(path, str) and re.fullmatch(r'/(?:data/)?tmp/gradio/[0-9a-f]{32,64}/[A-Za-z0-9_-]+\.wav', path):
+                return path
         raise ValueError('Gradio returned no valid narration file')
 
 
@@ -168,7 +200,9 @@ def capability():
     except HTTPException:
         available = False
     return dict(available=available, provider=adapter.provider if adapter.provider in ('openai', VieNeuSpeech.provider) else None,
-                timing='scene', max_characters=4000)
+                timing='scene', max_characters=4000,
+                **({'voice_selection': True, 'default_voice': adapter.voice}
+                   if isinstance(adapter, VieNeuSpeech) and available else {}))
 
 
 def captions(scenes, fmt):

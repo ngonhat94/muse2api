@@ -164,6 +164,7 @@ class Submission(Revision):
 
 
 class NarrationSubmission(Submission):
+    voice: str | None = Field(default=None, min_length=1, max_length=128)
     confirm_cost: Literal[True]
 
 
@@ -611,6 +612,8 @@ class ProjectService:
             key, replay = self.receipt(owner, pid, 'narration:' + sid,
                                        {k: fields[k] for k in ('revision', 'request_id')})
             if replay:
+                if self.data['requests'][key].get('voice') != fields.get('voice'):
+                    raise HTTPException(409, 'request_id already used for a different voice')
                 return self.public(p)
             self.revision(p, fields['revision'])
             scene = next((s for s in p['scenes'] if s['id'] == sid), None)
@@ -628,12 +631,12 @@ class ProjectService:
             preflight()
             jid = uuid.uuid4().hex
             scene['narration_audio'] = dict(id=jid, request_id=fields['request_id'], status='queued',
-                source_revision=binding(scene), provider=provider, model=None, voice=None,
+                source_revision=binding(scene), provider=provider, model=None, voice=fields.get('voice'),
                 media_id=None, duration=None, error=None, error_code=None)
             p['audio_mode'] = 'spoken'
             if p['render']:
                 p['render']['outdated'] = True
-            self.data['requests'][key] = dict(project=pid, action=action, id=jid)
+            self.data['requests'][key] = dict(project=pid, action=action, id=jid, voice=fields.get('voice'))
             self.changed(p)  # Durable authorization before any provider side effect.
             snapshot, accepted = copy.deepcopy(scene), self.public(p)
         def locate():
