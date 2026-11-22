@@ -94,6 +94,99 @@ class NarrationTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 OpenAISpeech().generate('Hi', 1)
 
+    def test_vieneu_gradio_single_submission_and_private_download(self):
+        import json
+        import os
+        from unittest.mock import MagicMock
+        from narration import speech_adapter, capability
+        origin = 'https://tts.example.test'
+        event = 'e' * 32
+        path = '/data/tmp/gradio/' + 'a' * 64 + '/audio.wav'
+
+        def response(data):
+            obj = MagicMock()
+            obj.__enter__.return_value = obj
+            obj.status_code = 200
+            obj.iter_content.return_value = [data]
+            return obj
+
+        with patch.dict(os.environ, {'MUSE_TTS_PROVIDER': 'vieneu-gradio', 'MUSE_TTS_GRADIO_URL': origin,
+                                     'MUSE_TTS_VOICE': 'Thiện Minh'}, clear=False), patch('narration.requests.Session') as factory:
+            adapter = speech_adapter()
+            self.assertEqual(capability()['provider'], 'vieneu-gradio')
+            transport = factory.return_value.__enter__.return_value
+            transport.post.return_value = response(json.dumps({'event_id': event}).encode())
+            file = {'path': path, 'url': 'https://untrusted.example/audio.wav'}
+            sse = 'event: generating\ndata: [null]\n\nevent: complete\ndata: ' + json.dumps([file]) + '\n\n'
+            transport.get.side_effect = [response(sse.encode()), response(audio_fixture())]
+            self.assertEqual(adapter.generate('Xin chào', 1), (audio_fixture(), .5))
+            args, kwargs = transport.post.call_args
+            self.assertEqual(args, (origin + '/gradio_api/call/wrapper',))
+            self.assertEqual(kwargs['json']['data'], ['Xin chào', 'Thiện Minh', None, None, None,
+                             'Standard (Một lần)', False, 1, .8, 256, True, None])
+            self.assertEqual([c.args[0] for c in transport.get.call_args_list],
+                             [args[0] + '/' + event, origin + '/gradio_api/file=' + path])
+            self.assertFalse(transport.trust_env)
+            for call in [transport.post.call_args, *transport.get.call_args_list]:
+                self.assertFalse(call.kwargs['allow_redirects'])
+                self.assertNotIn('headers', call.kwargs)
+            self.assertEqual(transport.post.call_count, 1)
+
+    def test_vieneu_rejects_bad_origin_events_and_file_paths(self):
+        import os
+        import json
+        from fastapi import HTTPException
+        from narration import VieNeuSpeech
+        for origin in ('http://tts.test', 'https://user@tts.test', 'https://tts.test/proxy', ''):
+            with self.subTest(origin=origin), patch.dict(os.environ, {'MUSE_TTS_GRADIO_URL': origin}):
+                with self.assertRaises(HTTPException):
+                    VieNeuSpeech().preflight()
+        for file in (None, {'url': 'https://tts.test/a.wav'}, {'path': '/etc/passwd'},
+                     {'path': '/tmp/gradio/' + 'a' * 64 + '/../x.wav'}):
+            with self.subTest(file=file), self.assertRaises(ValueError):
+                VieNeuSpeech._audio_path('event: complete\ndata: ' + json.dumps([file]))
+        with self.assertRaises(ValueError):
+            VieNeuSpeech._audio_path('event: error\ndata: null')
+
+    def test_authenticated_voice_catalog_selection_and_replay(self):
+        import app
+        import os
+        from narration import VieNeuSpeech
+        from fastapi.testclient import TestClient
+        from uuid import uuid4
+        client = TestClient(app.app)
+        _, key = app.users.create('Synthetic voice picker')
+        headers = {'Authorization': 'Bearer ' + key}
+        route = '/v1/video-projects/narration-voices'
+        self.assertEqual(client.get(route).status_code, 401)
+        project = client.post('/v1/video-projects', headers=headers, json={'title': 'Demo', 'idea': 'Sky'}).json()
+        path = '/v1/video-projects/' + project['id']
+        project = client.patch(path, headers=headers, json={'revision': project['revision'], 'script': 'Hi',
+            'scenes': [{'order': 0, 'narration': 'Hi', 'prompt': 'Sky', 'duration': 1}]}).json()
+        action = path + '/scenes/' + project['scenes'][0]['id'] + '/narration'
+        request = dict(revision=project['revision'], request_id=str(uuid4()), confirm_cost=True, voice='Trúc Ly')
+        events = 'event: complete\ndata: [{"choices":[["Giọng nữ","Trúc Ly"],["Nam","Thiện Minh"]]}]\n\n'
+        with patch.dict(os.environ, {'MUSE_TTS_PROVIDER': 'vieneu-gradio', 'MUSE_TTS_GRADIO_URL': 'https://tts.test'}), \
+             patch.object(VieNeuSpeech, '_call', return_value=events) as metadata, \
+             patch.object(VieNeuSpeech, 'generate', autospec=True, return_value=(audio_fixture(), .5)) as generate:
+            self.assertEqual(client.get(route, headers=headers).json()['voices'][0], {'id': 'Trúc Ly', 'label': 'Giọng nữ'})
+            self.assertEqual(metadata.call_args.args[1:3], ('_srt_voices', []))
+            generate.assert_not_called()
+            self.assertEqual(client.post(action, headers=headers, json=request).status_code, 200)
+            for thread in app.VIDEO_PROJECTS.threads:
+                thread.join(5)
+            self.assertEqual(client.get(path, headers=headers).json()['scenes'][0]['narration_audio']['voice'], 'Trúc Ly')
+            self.assertEqual(generate.call_args.args[0].voice, 'Trúc Ly')
+            self.assertEqual(client.post(action, headers=headers, json=request).status_code, 200)
+            self.assertEqual(client.post(action, headers=headers, json=dict(request, voice='Thiện Minh')).status_code, 409)
+            revision = client.get(path, headers=headers).json()['revision']
+            unknown = dict(request, voice='missing', request_id=str(uuid4()), revision=revision)
+            self.assertEqual(client.post(action, headers=headers, json=unknown).status_code, 200)
+            for thread in app.VIDEO_PROJECTS.threads:
+                thread.join(5)
+            self.assertEqual(client.get(path + '/requests/' + unknown['request_id'], headers=headers).json()['status'], 'failed')
+            generate.assert_called_once()
+
     def test_concurrent_edit_capacity_uuid_conflict_and_no_secret_persistence(self):
         import threading
         from video_projects import ProjectService

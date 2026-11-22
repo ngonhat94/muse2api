@@ -1,8 +1,9 @@
-"""Opt-in OpenAI speech adapter. No SDK, automatic retry or simulation."""
+"""Opt-in scene narration providers and PCM WAV validation."""
 import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import struct
 import time
@@ -86,15 +87,122 @@ class OpenAISpeech:
         return data, validate_audio(data, maximum)
 
 
+def _bounded_body(response, limit, deadline):
+    if response.status_code != 200:
+        raise ValueError('Narration provider failed')
+    data = bytearray()
+    for chunk in response.iter_content(8192):
+        if time.monotonic() > deadline or len(data) + len(chunk) > limit:
+            raise ValueError('Narration response limit exceeded')
+        data.extend(chunk)
+    return bytes(data)
+
+
+class VieNeuSpeech:
+    provider = 'vieneu-gradio'
+    # The Gradio operator selects the loaded model outside Muse.
+    model = None
+
+    def __init__(self):
+        self.origin = os.getenv('MUSE_TTS_GRADIO_URL', '').rstrip('/')
+        self.voice = os.getenv('MUSE_TTS_VOICE', 'Thiện Minh')
+
+    def preflight(self):
+        if not (re.fullmatch(r'https://[a-zA-Z0-9.-]+(?::[0-9]{1,5})?', self.origin)
+                and self.voice.strip() and shutil.which('ffmpeg') and shutil.which('ffprobe')):
+            raise HTTPException(503, 'Narration provider is not configured')
+
+    def generate(self, text, maximum):
+        self.preflight()
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
+            raise ValueError('Invalid narration text')
+        # The raw Gradio 5 /call protocol requires slots for both hidden State
+        # inputs (mode and session), even though /info omits them.
+        inputs = [text, self.voice, None, None, None, 'Standard (Một lần)',
+                  False, 1, 0.8, 256, True, None]
+        options = dict(timeout=(5, 30), stream=True, allow_redirects=False)
+        deadline = time.monotonic() + 180
+        with requests.Session() as session:
+            session.trust_env = False
+            events = self._call(session, 'wrapper', inputs, options, deadline)
+            path = self._audio_path(events)
+            # Rebuild on the configured origin. Never follow a provider-supplied URL.
+            with session.get(self.origin + '/gradio_api/file=' + path, **options) as response:
+                data = _bounded_body(response, MAX_AUDIO, deadline)
+        return data, validate_audio(data, maximum)
+
+    def _call(self, session, handler, inputs, options, deadline):
+        endpoint = self.origin + '/gradio_api/call/' + handler
+        with session.post(endpoint, json={'data': inputs}, **options) as response:
+            ticket = json.loads(_bounded_body(response, 1024, deadline))
+            event_id = ticket.get('event_id') if isinstance(ticket, dict) else None
+        if not isinstance(event_id, str) or not re.fullmatch('[0-9a-f]{32}', event_id):
+            raise ValueError('Invalid Gradio event')
+        with session.get(endpoint + '/' + event_id, **options) as response:
+            events = _bounded_body(response, 128 * 1024, deadline).decode('utf-8')
+        return events
+
+    def voices(self):
+        self.preflight()
+        try:
+            with requests.Session() as session:
+                session.trust_env = False
+                events = self._call(session, '_srt_voices', [], dict(
+                    timeout=(3, 8), stream=True, allow_redirects=False), time.monotonic() + 15)
+            choices = self._result(events)[0]['choices']
+            if not isinstance(choices, list) or len(choices) > 500:
+                raise ValueError()
+            catalog = {}
+            for entry in choices:
+                if not isinstance(entry, list) or len(entry) != 2:
+                    continue
+                label, voice = entry
+                if (isinstance(label, str) and isinstance(voice, str) and
+                        0 < len(voice) <= 128 and 0 < len(label) <= 512 and
+                        voice.isprintable() and label.isprintable()):
+                    catalog[voice] = label
+            return catalog
+        except (requests.RequestException, ValueError, TypeError, IndexError, KeyError):
+            raise HTTPException(503, 'Voice catalog unavailable') from None
+
+    @staticmethod
+    def _result(events):
+        for frame in events.replace('\r\n', '\n').split('\n\n'):
+            lines = frame.splitlines()
+            if 'event: error' in lines:
+                break
+            if 'event: complete' in lines:
+                payload = '\n'.join(line[5:].lstrip() for line in lines if line.startswith('data:'))
+                return json.loads(payload)
+        raise ValueError('Gradio request failed')
+
+    @staticmethod
+    def _audio_path(events):
+        result = VieNeuSpeech._result(events)
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            path = result[0].get('path')
+            if isinstance(path, str) and re.fullmatch(r'/(?:data/)?tmp/gradio/[0-9a-f]{32,64}/[A-Za-z0-9_-]+\.wav', path):
+                return path
+        raise ValueError('Gradio returned no valid narration file')
+
+
+def speech_adapter():
+    if os.getenv('MUSE_TTS_PROVIDER') == VieNeuSpeech.provider:
+        return VieNeuSpeech()
+    return OpenAISpeech()
+
+
 def capability():
-    adapter = OpenAISpeech()
+    adapter = speech_adapter()
     try:
         adapter.preflight()
         available = True
     except HTTPException:
         available = False
-    return dict(available=available, provider='openai' if adapter.provider == 'openai' else None,
-                timing='scene', max_characters=4000)
+    return dict(available=available, provider=adapter.provider if adapter.provider in ('openai', VieNeuSpeech.provider) else None,
+                timing='scene', max_characters=4000,
+                **({'voice_selection': True, 'default_voice': adapter.voice}
+                   if isinstance(adapter, VieNeuSpeech) and available else {}))
 
 
 def captions(scenes, fmt):

@@ -2579,32 +2579,48 @@ def narration_capability(principal=Depends(auth)):
     return capability()
 
 
+@app.get('/v1/video-projects/narration-voices')
+def narration_voices(principal=Depends(auth)):
+    from narration import VieNeuSpeech, speech_adapter
+    adapter = speech_adapter()
+    if not isinstance(adapter, VieNeuSpeech):
+        raise HTTPException(409, 'Voice selection unavailable')
+    return {'voices': [{'id': voice, 'label': label} for voice, label in adapter.voices().items()]}
+
+
 @app.post('/v1/video-projects/{pid}/scenes/{sid}/narration')
 def narrate_project_scene(pid: str, sid: str, req: NarrationSubmission, principal=Depends(auth)):
-    from narration import OpenAISpeech
+    from narration import speech_adapter
     owner, version = _owner(principal), principal.get('key_version')
-    adapter = OpenAISpeech()
+    adapter = speech_adapter()
     def preflight():
         adapter.preflight()
+        if req.voice is not None and adapter.provider != 'vieneu-gradio':
+            raise HTTPException(422, 'Voice selection unavailable')
         _project_preflight(principal)
     def synthesize(scene):
         job = OutstandingJob(owner, version)
         mid = None
         try:
             job.check()
+            if req.voice is not None:
+                if req.voice not in adapter.voices():
+                    raise ValueError('Preset is no longer available')
+                adapter.voice = req.voice
+                job.check()
             data, duration = adapter.generate(scene['narration'], scene['duration'])
             job.check()
             mid = 'narration_' + uuid.uuid4().hex + '.wav'
             store.write_media(mid, data, owner)
             job.check()
-            return dict(media_id=mid, duration=duration, provider='openai', model=adapter.model, voice=adapter.voice)
+            return dict(media_id=mid, duration=duration, provider=adapter.provider, model=adapter.model, voice=adapter.voice)
         except BaseException:
             if mid:
                 store.delete_media(mid, owner_id=owner)
             raise
         finally:
             job.release()
-    return VIDEO_PROJECTS.narrate(owner, pid, sid, req.model_dump(), synthesize, preflight)
+    return VIDEO_PROJECTS.narrate(owner, pid, sid, req.model_dump(), synthesize, preflight, provider=adapter.provider)
 
 
 def _project_audio_bytes(owner, scene):
