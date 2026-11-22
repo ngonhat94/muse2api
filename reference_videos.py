@@ -22,14 +22,14 @@ def extraction_capability():
 
 def extract_video(source, directory, stage):
     extraction_capability()
-    deadline = time.monotonic() + 120
+    deadline = time.monotonic() + 240
 
-    def run(args, output=False):
+    def run(args, output=False, budget=30):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise ValueError('Extraction time limit')
         return subprocess.run(args, stdout=subprocess.PIPE if output else subprocess.DEVNULL,
-                              stderr=subprocess.DEVNULL, timeout=min(30, remaining), check=True).stdout
+                              stderr=subprocess.DEVNULL, timeout=min(budget, remaining), check=True).stdout
 
     stage('probe')
     info = json.loads(run(['ffprobe', '-v', 'error', '-protocol_whitelist', 'file',
@@ -44,14 +44,15 @@ def extract_video(source, directory, stage):
     num, den = video.get('avg_frame_rate', '0/1').split('/')
     if not 0 < w <= 4096 or not 0 < h <= 4096 or w*h > 8847360 or not 0 < float(num)/float(den) <= 120:
         raise ValueError('Unsupported video bounds')
-    common = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1',
+    common = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '4',
               '-filter_threads', '1', '-protocol_whitelist', 'file',
               '-format_whitelist', 'mov,matroska,webm', '-i', str(source), '-map', '0:v:0', '-an', '-sn', '-dn']
     stage('cuts')
     # Metadata is sent to stdout, not a shell or an unbounded log file. Only
     # selected frames produce lines, capped at 121 (overflow fails, never truncates).
+    # Full-frame scene detection gets a larger budget than individual seeks.
     raw = run(common + ['-vf', "scale=320:320:force_original_aspect_ratio=decrease,select=gt(scene\\,0.30),metadata=print:file='pipe\\:1'",
-                        '-t', '120', '-frames:v', '121', '-f', 'null', '-'], True)
+                        '-t', '120', '-frames:v', '121', '-f', 'null', '-'], True, budget=120)
     points = [float(v) for v in re.findall(rb'pts_time:([0-9.]+)', raw)]
     boundaries = [0.0] + sorted(set(p for p in points if 0 < p < duration)) + [duration]
     if len(boundaries) - 1 > 120:
@@ -61,7 +62,7 @@ def extract_video(source, directory, stage):
     for order, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
         path = Path(directory)/f'{order}.jpg'
         # Output dimensions, frames and bytes bounded independently of input.
-        run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1',
+        run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '4',
              '-filter_threads', '1', '-ss', str((start+end)/2), '-protocol_whitelist', 'file',
              '-format_whitelist', 'mov,matroska,webm', '-i', str(source), '-map', '0:v:0',
              '-an', '-sn', '-dn', '-vf', 'scale=480:480:force_original_aspect_ratio=decrease', '-frames:v', '1',
