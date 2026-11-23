@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
 from typing import Literal
 
-from web_download_worker import MAX_BYTES
+from web_download_worker import MAX_BYTES, youtube_support, safe_diagnostic
 from protection import StorageQuotaExceeded
 
 SITES = {
@@ -54,8 +55,11 @@ def normalize_url(value):
 
 def capability():
     ready = bool(not getattr(sys, 'frozen', False) and importlib.util.find_spec('yt_dlp') and shutil.which('ffmpeg') and shutil.which('ffprobe'))
+    youtube = youtube_support()
+    youtube['available'] = ready and youtube['available']
     return dict(available=ready, sites=list(dict.fromkeys(SITES.values())),
-                qualities=[480, 720, 1080], max_bytes=MAX_BYTES, max_seconds=600)
+                qualities=[480, 720, 1080], max_bytes=MAX_BYTES, max_seconds=600,
+                youtube=youtube)
 
 
 def run_download(url, quality, root, observe, check, cancelled):
@@ -65,7 +69,8 @@ def run_download(url, quality, root, observe, check, cancelled):
     env = {'PATH': os.environ.get('PATH', os.defpath), 'LANG': 'C.UTF-8', 'PYTHONUNBUFFERED': '1', 'PYTHONNOUSERSITE': '1'}
     process = subprocess.Popen(
         [sys.executable, str(Path(__file__).with_name('web_download_worker.py')), str(root)],
-        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=os.name == 'posix')
     deadline = time.monotonic() + 480
     previous = None
     try:
@@ -94,12 +99,21 @@ def run_download(url, quality, root, observe, check, cancelled):
             return None, progress
         return root/'video.mp4', progress
     finally:
+        def stop(force=False):
+            try:
+                if os.name == 'posix' and process.pid > 1:
+                    os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+                elif process.poll() is None:
+                    process.kill() if force else process.terminate()
+            except ProcessLookupError:
+                pass
+        # Kill only the session created for this worker, including its solver.
+        stop()
         if process.poll() is None:
-            process.terminate()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                process.kill()
+                stop(force=True)
                 process.wait()
 
 
@@ -169,7 +183,8 @@ class DownloadService:
             jid = uuid.uuid4().hex
             job = dict(payload, id=jid, owner_id=owner, site=site, request_id=rid,
                        status='queued', stage='queued', error_code=None, title='',
-                       downloaded=0, total=None, media_id=None, created_at=now, updated_at=now)
+                       downloaded=0, total=None, media_id=None, diagnostic=None,
+                       created_at=now, updated_at=now)
             before = copy.deepcopy(self.projects.data)
             try:
                 for old in sorted(owned, key=lambda j: j['created_at'])[:max(0, len(owned) - 19)]:
@@ -206,7 +221,12 @@ class DownloadService:
                         if output is None:
                             with self.projects.lock:
                                 current = self.owned(owner, jid)
-                                current.update(status='failed', stage='failed', error_code=result.get('error_code', 'unavailable'),
+                                diagnostic = result.get('diagnostic') or {}
+                                diagnostic = diagnostic if isinstance(diagnostic, dict) else {}
+                                code = result.get('error_code')
+                                code = code if isinstance(code, str) and code in {'bounds', 'protected', 'authentication_required', 'unsupported', 'unavailable'} else 'unavailable'
+                                current.update(status='failed', stage='failed', error_code=code,
+                                               diagnostic=safe_diagnostic(diagnostic.get('reason'), diagnostic.get('flags')),
                                                updated_at=int(time.time()))
                                 self.projects.save()
                             return

@@ -1,4 +1,8 @@
+FROM denoland/deno:bin-2.9.8@sha256:b507583d3c68ba69f3ed2ce5969ae5b8b70f43421c781279c7aea06435263543 AS deno
 FROM python:3.11-slim-bookworm
+
+# Reviewed solver runtime; no runtime script/package downloads.
+COPY --from=deno /deno /usr/local/bin/deno
 
 # 基础环境与 Chromium 安装
 ENV DEBIAN_FRONTEND=noninteractive \

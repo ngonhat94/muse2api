@@ -24,6 +24,13 @@ spec.loader.exec_module(release)
 
 
 def main(image, sha):
+    # Purely local EJS fixtures; kernel-enforced no-network/no-write image check.
+    subprocess.run(['docker', 'run', '--rm', '--network', 'none', '--read-only',
+                    '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=268435456',
+                    '--cap-drop=ALL', '--security-opt=no-new-privileges',
+                    '--memory=1g', '--pids-limit=64',
+                    '-e', 'PYTHONDONTWRITEBYTECODE=1', '--entrypoint', 'python',
+                    image, 'tools/check_youtube_runtime.py'], check=True, timeout=120)
     name = 'ci-' + uuid.uuid4().hex[:12]
     bad_sha = '0' * 40
     # Tag a service-owned copy so the rollout cannot operate on production names.
