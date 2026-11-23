@@ -1,0 +1,55 @@
+name: Verify image storyboard commit (test and build only)
+
+on:
+  push:
+    branches: [verify/image-storyboard-ci]
+
+permissions:
+  contents: read
+
+env:
+  BACKEND_SHA: 64dac12b7ef160f223d5843a0dcc8216ad6c193a
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install synthetic render tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: pip install -r tests/requirements-ci.txt
+      - name: Verify checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$BACKEND_SHA"
+      - name: Guarded synthetic backend regressions
+        run: python tests/run_custom_regressions.py
+      - name: Offline JavaScript regressions
+        run: |
+          set -e
+          for test in tests/*.mjs tests/*.cjs; do node "$test"; done
+      - name: Release safety regressions
+        run: python -m unittest discover -s tests -p 'test_ci_*.py' -v
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+      - name: Verify checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$BACKEND_SHA"
+      - name: Build verification image
+        run: |
+          docker build --build-arg BUILD_SHA="$BACKEND_SHA"             --label io.muse2api.service=muse2api-ci-pr16             -t "muse2api-ci-pr16:$BACKEND_SHA" .
+      - name: Synthetic Docker startup, auth, persistence and provenance
+        run: python3 tests/ci_image_smoke.py "muse2api-ci-pr16:$BACKEND_SHA" "$BACKEND_SHA"
