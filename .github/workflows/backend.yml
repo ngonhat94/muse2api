@@ -49,6 +49,14 @@ jobs:
           docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=67108864 --cap-drop=ALL --security-opt=no-new-privileges --memory=1g --pids-limit=64 --entrypoint python3 muse-pot-offline /opt/muse/check_offline.py
           docker run --rm --network none --read-only --cap-drop=ALL --security-opt=no-new-privileges --memory=1g --pids-limit=64 --entrypoint node muse-pot-offline /opt/muse/mint_contract.mjs
           docker run --rm --network none --read-only --cap-drop=ALL --security-opt=no-new-privileges --memory=1g --pids-limit=64 --entrypoint node muse-pot-offline --input-type=module -e "const {SessionManager}=await import('/opt/bgutil/server/build/session_manager.js'); if(typeof SessionManager.prototype.getFetch!=='function'||typeof SessionManager.prototype.generatePoToken!=='function') process.exit(1);"
+      - name: Build optional UID10001 API and namespace firewall images
+        run: |
+          docker build -f deploy/pot-isolation/Dockerfile.api --build-arg MUSE_BACKEND_IMAGE="muse2api-muse2api-production:$GITHUB_SHA" -t muse-pot-api-offline .
+          docker build -f deploy/pot-isolation/Dockerfile.guard -t muse-pot-guard-offline .
+      - name: Offline UID socket persistence and kernel egress checks
+        run: |
+          python3 tests/ci_pot_runtime.py muse-pot-api-offline muse-pot-offline
+          python3 tests/ci_pot_isolation.py muse-pot-guard-offline
       - name: Export exact tested image
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: docker save "muse2api-muse2api-production:$GITHUB_SHA" | gzip > backend-image.tar.gz

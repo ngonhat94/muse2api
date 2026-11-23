@@ -1,0 +1,14 @@
+# Build explicitly against the reviewed backend image; never replace default Dockerfile.
+ARG MUSE_BACKEND_IMAGE=scratch
+FROM ${MUSE_BACKEND_IMAGE}
+USER 0:0
+RUN groupadd --gid 10001 muse-runtime && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /runtime --shell /usr/sbin/nologin muse-runtime \
+ && chmod -R a+rX /app \
+ && install -d -o 10001 -g 10001 -m 0700 /runtime /runtime/data /runtime/profiles /run/muse-pot
+COPY deploy/pot-isolation/api_entrypoint.py /opt/muse-api/start.py
+COPY deploy/pot-isolation/prepare_layout.py /opt/muse-api/prepare_layout.py
+RUN chmod 0555 /opt/muse-api/start.py /opt/muse-api/prepare_layout.py
+ENV HOME=/runtime MUSE2API_HOME=/runtime MUSE2API_PROFILE_ROOT=/runtime/profiles PYTHONDONTWRITEBYTECODE=1
+USER 10001:10001
+ENTRYPOINT ["python3", "-B", "/opt/muse-api/start.py"]
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "18610"]

@@ -1,0 +1,96 @@
+# Opt-in review bundle. Not referenced by the production rollout.
+# Runtime/socket directories must be NEW, pre-provisioned and owned by 10001.
+services:
+  net-guard:
+    image: ${MUSE_POT_GUARD_IMAGE:?reviewed immutable guard image required}
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 32
+    volumes:
+      - type: bind
+        source: ${MUSE_POT_POLICY_FILE:?reviewed policy file required}
+        target: /etc/muse-pot/policy.json
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /run/muse-pot-guard:rw,noexec,nosuid,nodev,size=1048576,mode=0700
+    networks: [pot-egress]
+  pot-provider:
+    image: ${MUSE_POT_PROVIDER_IMAGE:?reviewed immutable provider image required}
+    user: "10001:10001"
+    restart: "no"
+    network_mode: service:net-guard
+    depends_on:
+      net-guard:
+        condition: service_healthy
+        restart: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 64
+    ulimits:
+      core: {soft: 0, hard: 0}
+      nofile: {soft: 256, hard: 256}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777
+    volumes:
+      - type: bind
+        source: ${MUSE_POT_NEW_IPC_DIR:?new private IPC directory required}
+        target: /run/muse-pot
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${MUSE_POT_RESOLV_FILE:?readonly controlled resolver file required}
+        target: /etc/resolv.conf
+        read_only: true
+        bind: {create_host_path: false}
+  api:
+    image: ${MUSE_NONROOT_API_IMAGE:?reviewed non-root API image required}
+    user: "10001:10001"
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    shm_size: 512m
+    environment:
+      HOME: /runtime
+      MUSE2API_HOME: /runtime
+      MUSE2API_PROFILE_ROOT: /runtime/profiles
+      MUSE2API_MANAGED_DEPLOYMENT: "1"
+      MUSE2API_REPOSITORY: ngonhat94/muse2api
+      MUSE2API_REPO_REF: master
+      # Remains off until a separate reviewed activation sets the exact path.
+      MUSE_YOUTUBE_POT_SOCKET: ${MUSE_POT_OPT_IN:-}
+    ports:
+      # Review instance only; never bind the production 18610 port implicitly.
+      - "127.0.0.1:${MUSE_POT_REVIEW_PORT:?unused review port required}:18610"
+    volumes:
+      - type: bind
+        source: ${MUSE_POT_NEW_RUNTIME_DIR:?new isolated runtime copy required}
+        target: /runtime
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${MUSE_POT_NEW_IPC_DIR:?new private IPC directory required}
+        target: /run/muse-pot
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=536870912,mode=1777
+    networks: [api-review]
+networks:
+  pot-egress:
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: ${MUSE_POT_REVIEW_SUBNET:?reviewed non-overlapping IPv4 subnet required}
+  api-review:
+    enable_ipv6: false

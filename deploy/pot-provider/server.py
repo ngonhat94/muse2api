@@ -6,6 +6,7 @@ import resource
 import select
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import threading
@@ -14,6 +15,31 @@ import time
 from pot_broker import SOCKET_PATH, MAX_FRAME, PotError, recv_frame, send_frame, validate_request, validate_response
 
 LIMIT = threading.BoundedSemaphore(2)
+
+
+def check_ipc_directory(path):
+    metadata=path.lstat()
+    if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid!=10001
+            or metadata.st_gid!=10001 or stat.S_IMODE(metadata.st_mode)!=0o700):
+        raise ValueError('Private UID10001 IPC directory is required')
+
+
+def prepare_socket(path):
+    """Remove only an owned, mode-0600, refused stale socket in private IPC."""
+    try: before=path.lstat()
+    except FileNotFoundError:return
+    if (not stat.S_ISSOCK(before.st_mode) or before.st_uid!=os.getuid()
+            or stat.S_IMODE(before.st_mode)!=0o600):
+        raise ValueError('Refusing a foreign IPC path')
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as probe:
+        probe.settimeout(.5)
+        try:probe.connect(str(path))
+        except ConnectionRefusedError:pass
+        else:raise ValueError('Provider socket is already serving')
+    after=path.lstat()
+    if (before.st_dev,before.st_ino)!=(after.st_dev,after.st_ino):
+        raise ValueError('IPC path changed during verification')
+    path.unlink()
 
 
 def child_limits():
@@ -71,9 +97,13 @@ def handle(conn):
 
 
 def main():
-    if os.getuid()==0: raise SystemExit('Run the provider as a dedicated non-root UID')
+    if os.getuid()!=10001 or os.getgid()!=10001:
+        raise SystemExit('Provider requires UID/GID 10001:10001')
     path=Path(SOCKET_PATH)
-    if path.exists(): raise SystemExit('Refusing to replace an existing provider socket')
+    try:
+        check_ipc_directory(path.parent)
+        prepare_socket(path)
+    except (OSError,ValueError):raise SystemExit('Provider socket is not safe to bind') from None
     os.umask(0o077)
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as server:
         server.bind(str(path))
