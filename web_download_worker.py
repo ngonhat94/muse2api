@@ -21,6 +21,10 @@ EJS_VERSION = '0.8.0'
 
 # Values below, never exception text, may cross the worker boundary.
 DIAGNOSTICS = {
+    'youtube_po_provider_failed': 'Dịch vụ PO Token không trả kết quả hợp lệ. Không tự thử lại.',
+    'youtube_po_request_rejected': 'Yêu cầu PO Token không khớp phạm vi job được phép.',
+    'youtube_po_binding_mismatch': 'PO Token không khớp ngữ cảnh hoặc phiên khách của job.',
+    'youtube_po_token_expired': 'PO Token đã hết hạn hoặc thiếu hạn dùng hợp lệ.',
     'upstream_failure': 'Nguồn video không trả kết quả tải hợp lệ.',
     'youtube_bot_check': 'YouTube yêu cầu xác minh chống bot. Không tự thử lại hoặc dùng cookie.',
     'youtube_login_required': 'Video YouTube yêu cầu đăng nhập hoặc quyền truy cập riêng.',
@@ -48,8 +52,14 @@ def safe_diagnostic(reason, flags=()):
 
 
 def classify_error(value, youtube=False):
+    from pot_broker import PotError
+    if isinstance(value, PotError):
+        return 'unavailable', value.reason if value.reason in DIAGNOSTICS else 'youtube_po_provider_failed'
     # Strip URLs before matching: a query string/FAQ URL is not evidence of login.
     message = re.sub(r'https?://\S+', '', str(value)[:16384]).lower()
+    for reason in ('youtube_po_provider_failed', 'youtube_po_request_rejected',
+                   'youtube_po_binding_mismatch', 'youtube_po_token_expired'):
+        if reason in message: return 'unavailable', reason
     if youtube:
         if any(s in message for s in ('not a bot', 'confirm you’re not', "confirm you're not")):
             return 'unavailable', 'youtube_bot_check'
@@ -320,9 +330,17 @@ def main(root):
         merge_output_format='mp4', fixup='never', logger=logger,
         quiet=True, no_warnings=True, windowsfilenames=True,
     )
+    pot_fd = os.environ.pop('MUSE_POT_FD', None) if youtube else None
+    pot_video = os.environ.pop('MUSE_POT_VIDEO_ID', None) if youtube else None
+    if pot_fd:
+        options['extractor_args'] = {'youtube': {'player_client': ['mweb'], 'fetch_pot': ['auto']}}
     report('probing')
+    pot_conn = None
     try:
         with yt_dlp.YoutubeDL(options) as downloader:
+            if pot_fd:
+                from pot_worker import install
+                pot_conn = install(downloader, int(pot_fd), pot_video)
             for name in list(downloader._request_director.handlers):
                 if name != 'Urllib':
                     downloader._request_director.handlers.pop(name).close()
@@ -357,6 +375,8 @@ def main(root):
         code, reason = classify_error(exc, youtube)
         report('failed', error_code=code, diagnostic=safe_diagnostic(reason, logger.flags))
         sys.exit(1)
+    finally:
+        if pot_conn: pot_conn.close()
 
 
 if __name__ == '__main__':
