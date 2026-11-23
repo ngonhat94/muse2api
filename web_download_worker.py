@@ -206,8 +206,10 @@ def install_guards():
 
     class RestrictedProcess(popen):
         def __init__(self, args, *extra, **kwargs):
-            if (not isinstance(args, (list, tuple)) or not args or kwargs.get('shell')
-                    or kwargs.get('executable') or kwargs.get('preexec_fn')):
+            if (not isinstance(args, (list, tuple)) or not args or extra or kwargs.get('shell')
+                    or kwargs.get('executable') or kwargs.get('preexec_fn')
+                    or kwargs.get('start_new_session') or kwargs.get('pass_fds')
+                    or kwargs.get('process_group') not in (None, -1)):
                 raise PermissionError('Unsupported child process')
             executable = shutil.which(str(args[0]))
             executable = str(Path(executable).resolve()) if executable else None

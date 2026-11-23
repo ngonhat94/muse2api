@@ -110,6 +110,11 @@ class DownloadTest(unittest.TestCase):
                 with self.assertRaises(PermissionError): subprocess.Popen(args)
             with self.assertRaises(PermissionError):
                 subprocess.Popen(['deno', '--version'], executable='/bin/sh')
+            with self.assertRaises(PermissionError):
+                subprocess.Popen(['deno', '--version'], 0, '/bin/sh')
+            for options in ({'start_new_session':True}, {'process_group':0}, {'pass_fds':(99,)}):
+                with self.assertRaises(PermissionError):
+                    subprocess.Popen(['deno', '--version'], **options)
 
     def test_url_and_connection_guards(self):
         for url in ('http://127.0.0.1/video', 'https://youtube.com.evil.test/x',
