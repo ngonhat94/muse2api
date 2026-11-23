@@ -1,5 +1,9 @@
 [
   [
+    "test_web_downloads.py",
+    []
+  ],
+  [
     "test_shorts.py",
     []
   ],
