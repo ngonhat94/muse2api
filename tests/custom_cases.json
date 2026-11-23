@@ -217,5 +217,9 @@
   [
     "test_wake_confirmation.py",
     []
+  ],
+  [
+    "test_pot_broker.py",
+    []
   ]
 ]

@@ -30,6 +30,9 @@ with tempfile.TemporaryDirectory(dir=os.environ.get('MUSE2API_TEST_TMP', tempfil
    stack.enter_context(patch.object(engine.MuseEngine,name,deny))
   import requests
   stack.enter_context(patch.object(requests.sessions.Session,'request',deny))
+  if target.endswith('test_pot_broker.py'):
+   # yt-dlp defines a Popen subclass at import; keep execution blocked below.
+   import yt_dlp
   real_popen = subprocess.Popen
   def guarded_popen(args, *a, **kw):
    if isinstance(args, list) and args and args[0] == sys.executable and target.endswith('test_tenant_review_blockers.py'):

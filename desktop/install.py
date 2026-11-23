@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = (
     'app.py', 'engine.py', 'store.py', 'config.py', 'cdp.py', 'proxy.py', 'tenant.py', 'protection.py',
     'authority.py', 'idempotency.py', 'operations.py', 'client_config.py',
-    'video_projects.py', 'first_frames.py', 'image_projects.py', 'web_downloads.py', 'web_download_worker.py', 'reference_videos.py', 'thumbnails.py', 'generation_timing.py',
+    'video_projects.py', 'first_frames.py', 'image_projects.py', 'web_downloads.py', 'web_download_worker.py', 'pot_broker.py', 'pot_worker.py', 'reference_videos.py', 'thumbnails.py', 'generation_timing.py',
     'narration.py', 'shorts.py', 'shorts_render.py',
     'requirements.txt', 'desktop/launcher.py', 'desktop/requirements-build.txt',
     'tools/build_desktop.py',

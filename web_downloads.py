@@ -13,6 +13,7 @@ import threading
 import time
 from urllib.parse import urlsplit, urlunsplit
 import uuid
+from pot_broker import enabled as pot_enabled, JobBroker, serve_job
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -57,6 +58,7 @@ def capability():
     ready = bool(not getattr(sys, 'frozen', False) and importlib.util.find_spec('yt_dlp') and shutil.which('ffmpeg') and shutil.which('ffprobe'))
     youtube = youtube_support()
     youtube['available'] = ready and youtube['available']
+    youtube['anonymous_po_token'] = dict(configured=pot_enabled(), live_verified=False)
     return dict(available=ready, sites=list(dict.fromkeys(SITES.values())),
                 qualities=[480, 720, 1080], max_bytes=MAX_BYTES, max_seconds=600,
                 youtube=youtube)
@@ -67,10 +69,33 @@ def run_download(url, quality, root, observe, check, cancelled):
     request.write_text(json.dumps(dict(url=url, quality=quality)))
     os.chmod(request, 0o600)
     env = {'PATH': os.environ.get('PATH', os.defpath), 'LANG': 'C.UTF-8', 'PYTHONUNBUFFERED': '1', 'PYTHONNOUSERSITE': '1'}
-    process = subprocess.Popen(
-        [sys.executable, str(Path(__file__).with_name('web_download_worker.py')), str(root)],
-        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=os.name == 'posix')
+    ipc_parent = ipc_child = broker = broker_thread = None
+    broker_stopped = threading.Event()
+    def broker_check():
+        check()
+        if broker_stopped.is_set(): raise InterruptedError()
+    if pot_enabled() and normalize_url(url)[1] == 'YouTube':
+        import socket
+        from yt_dlp.extractor.youtube import YoutubeIE
+        video_id = YoutubeIE.extract_id(url)  # URL parsing only; no network.
+        ipc_parent, ipc_child = socket.socketpair()
+        env['MUSE_POT_FD'] = str(ipc_child.fileno())
+        env['MUSE_POT_VIDEO_ID'] = video_id
+        broker = JobBroker(video_id, broker_check, cancelled)
+    try:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(__file__).with_name('web_download_worker.py')), str(root)],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            **({'pass_fds': (ipc_child.fileno(),)} if ipc_child else {}),
+            start_new_session=os.name == 'posix')
+    except BaseException:
+        if ipc_parent: ipc_parent.close()
+        if ipc_child: ipc_child.close()
+        raise
+    if ipc_child:
+        ipc_child.close()
+        broker_thread = threading.Thread(target=serve_job, args=(ipc_parent, broker), daemon=True)
+        broker_thread.start()
     deadline = time.monotonic() + 480
     previous = None
     try:
@@ -99,6 +124,7 @@ def run_download(url, quality, root, observe, check, cancelled):
             return None, progress
         return root/'video.mp4', progress
     finally:
+        broker_stopped.set()
         def stop(force=False):
             try:
                 if os.name == 'posix' and process.pid > 1:
@@ -115,6 +141,12 @@ def run_download(url, quality, root, observe, check, cancelled):
             except subprocess.TimeoutExpired:
                 stop(force=True)
                 process.wait()
+        if ipc_parent:
+            try: ipc_parent.shutdown(2)
+            except OSError: pass
+            ipc_parent.close()
+            broker_thread.join(timeout=23)
+            broker.close()
 
 
 class DownloadService:
