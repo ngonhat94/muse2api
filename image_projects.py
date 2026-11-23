@@ -36,7 +36,7 @@ def import_images(projects, store, owner, metadata, images, check):
             if previous['action'] != 'image-import' or previous.get('digest') != digest:
                 raise HTTPException(409, 'request_id already used for another payload')
             return projects.public(projects.owned(owner, previous['project']))
-        if key in projects.data['requests'] or key in projects.data.get('reference_imports', {}):
+        if any(key in projects.data.get(table, {}) for table in ('requests', 'reference_imports', 'web_download_requests')):
             raise HTTPException(409, 'request_id already used for another action')
         if sum(p['owner_id'] == owner for p in projects.data['projects'].values()) >= 100:
             raise HTTPException(429, 'Project limit reached')

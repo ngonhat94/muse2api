@@ -2429,6 +2429,8 @@ _PLANNING_DIAGNOSTICS = contextvars.ContextVar('planning_diagnostics', default=F
 VIDEO_PROJECTS = ProjectService(Path(CFG.data_dir) / 'video-projects.json')
 from reference_videos import ReferenceService, extraction_capability, MAX_FILE, MAX_BODY, MIMES
 REFERENCES = ReferenceService(VIDEO_PROJECTS, store, Path(CFG.data_dir) / 'reference-scratch')
+from web_downloads import DownloadService, DownloadCreate
+WEB_DOWNLOADS = DownloadService(VIDEO_PROJECTS, store, Path(CFG.data_dir) / 'web-video-scratch')
 from shorts import ShortsService, Draft, DraftUpdate
 SHORTS = ShortsService(VIDEO_PROJECTS)
 
@@ -2439,7 +2441,9 @@ class ReferenceBodyLimit:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope['type'] != 'http' or scope.get('method') != 'POST' or scope.get('path') != '/v1/reference-videos':
+        limits = {'/v1/reference-videos': MAX_BODY, '/v1/video-downloads': 32 * 1024}
+        limit = limits.get(scope.get('path'))
+        if scope['type'] != 'http' or scope.get('method') != 'POST' or limit is None:
             return await self.app(scope, receive, send)
         # Incumbent auth/rate middleware still runs before any receive call.
         size = 0
@@ -2447,8 +2451,8 @@ class ReferenceBodyLimit:
             nonlocal size
             message = await receive()
             size += len(message.get('body', b''))
-            if size > MAX_BODY:
-                raise HTTPException(413, 'Reference upload body too large')
+            if size > limit:
+                raise HTTPException(413, 'Media request body too large')
             return message
         await self.app(scope, bounded_receive, send)
 
@@ -2829,6 +2833,52 @@ async def _project_planner(project, principal):
     finally:
         _PLANNING_DIAGNOSTICS.reset(token)
     return planning_content(result)
+
+
+@app.get('/v1/video-downloads/capability')
+def video_download_capability(principal=Depends(auth)):
+    from web_downloads import capability
+    return capability()
+
+
+def _download_view(principal, job):
+    job['url_result'] = (media_url(job['media_id'], _owner(principal))
+                         if job['media_id'] and store.media_owner(job['media_id']) == _owner(principal) else None)
+    return job
+
+
+@app.get('/v1/video-downloads')
+def list_video_downloads(principal=Depends(auth)):
+    return {'downloads': [_download_view(principal, j) for j in WEB_DOWNLOADS.list(_owner(principal))['downloads']]}
+
+
+@app.get('/v1/video-downloads/requests/{rid}')
+def video_download_receipt(rid: str, principal=Depends(auth)):
+    return _download_view(principal, WEB_DOWNLOADS.receipt(_owner(principal), rid))
+
+
+@app.get('/v1/video-downloads/{jid}')
+def get_video_download(jid: str, principal=Depends(auth)):
+    return _download_view(principal, WEB_DOWNLOADS.get(_owner(principal), jid))
+
+
+@app.post('/v1/video-downloads', status_code=202)
+def create_video_download(req: DownloadCreate, principal=Depends(auth)):
+    owner = _owner(principal)
+    authority = OutstandingJob(owner, principal.get('key_version'))
+    transferred = False
+    try:
+        job, transferred = WEB_DOWNLOADS.create(owner, req.model_dump(), authority,
+                                               lambda: _project_preflight(principal))
+        return _download_view(principal, job)
+    finally:
+        if not transferred:
+            authority.release()
+
+
+@app.post('/v1/video-downloads/{jid}/cancel')
+def cancel_video_download(jid: str, principal=Depends(auth)):
+    return _download_view(principal, WEB_DOWNLOADS.cancel(_owner(principal), jid))
 
 
 @app.post('/v1/video-projects/from-images')
