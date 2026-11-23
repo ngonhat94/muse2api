@@ -8,3 +8,4 @@ cryptography>=43
 pillow>=10
 
 yt-dlp==2026.10.26
+yt-dlp-ejs==0.8.0

@@ -1,9 +1,13 @@
 """Isolated public-video downloader. No inherited provider/auth configuration."""
+import functools
+import importlib.metadata
 import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -12,6 +16,141 @@ import time
 
 MAX_BYTES = 128 * 1024**2
 MAX_SECONDS = 600
+DENO_VERSION = '2.9.8'
+EJS_VERSION = '0.8.0'
+
+# Values below, never exception text, may cross the worker boundary.
+DIAGNOSTICS = {
+    'upstream_failure': 'Nguồn video không trả kết quả tải hợp lệ.',
+    'youtube_bot_check': 'YouTube yêu cầu xác minh chống bot. Không tự thử lại hoặc dùng cookie.',
+    'youtube_login_required': 'Video YouTube yêu cầu đăng nhập hoặc quyền truy cập riêng.',
+    'youtube_po_token_required': 'YouTube yêu cầu PO Token; máy chủ chưa cung cấp token phù hợp.',
+    'youtube_js_runtime_missing': 'Máy chủ thiếu Deno để giải challenge YouTube.',
+    'youtube_js_runtime_unsupported': 'Phiên bản Deno chưa nằm trong cấu hình được kiểm thử.',
+    'youtube_ejs_missing': 'Máy chủ thiếu đúng phiên bản EJS đã ghim.',
+    'youtube_js_challenge_failed': 'Không giải được challenge JavaScript của YouTube.',
+    'upstream_rate_limited': 'Nguồn video đang giới hạn yêu cầu. Không tự thử lại.',
+    'upstream_forbidden': 'Nguồn video từ chối truy cập. Chưa xác định nguyên nhân cụ thể.',
+    'blocked_destination': 'Worker đã chặn đích mạng không được phép.',
+    'blocked_process': 'Worker đã chặn tiến trình hoặc tùy chọn không được phép.',
+    'authentication_required': 'Nguồn video yêu cầu đăng nhập.',
+    'protected': 'Video có bảo vệ nội dung.',
+    'bounds': 'Video vượt giới hạn được phép.',
+    'unsupported': 'Nguồn hoặc loại video chưa được hỗ trợ.',
+}
+
+
+def safe_diagnostic(reason, flags=()):
+    reason = reason if isinstance(reason, str) and reason in DIAGNOSTICS else 'upstream_failure'
+    flags = flags if isinstance(flags, (list, tuple, set)) else ()
+    return dict(reason=reason, message=DIAGNOSTICS[reason],
+                flags=sorted({f for f in flags if isinstance(f, str) and f in DIAGNOSTICS})[:8])
+
+
+def classify_error(value, youtube=False):
+    # Strip URLs before matching: a query string/FAQ URL is not evidence of login.
+    message = re.sub(r'https?://\S+', '', str(value)[:16384]).lower()
+    if youtube:
+        if any(s in message for s in ('not a bot', 'confirm you’re not', "confirm you're not")):
+            return 'unavailable', 'youtube_bot_check'
+        if ('po token' in message or 'po_token' in message) and any(s in message for s in ('missing', 'required', 'requires', 'not provided', 'no po token')):
+            return 'unavailable', 'youtube_po_token_required'
+        if 'javascript runtime' in message and any(s in message for s in ('no supported', 'missing', 'not found')):
+            return 'unavailable', 'youtube_js_runtime_missing'
+        if 'ejs' in message and any(s in message for s in ('missing', 'not available', 'not installed', 'unavailable')):
+            return 'unavailable', 'youtube_ejs_missing'
+        if 'challenge' in message and any(s in message for s in ('failed', 'failure', 'unable to solve')):
+            return 'unavailable', 'youtube_js_challenge_failed'
+        if any(s in message for s in ('private video', 'members-only', 'members only', 'age-restricted', 'login_required', 'sign in to verify your age')):
+            return 'authentication_required', 'youtube_login_required'
+    if 'blocked destination' in message or 'unresolved destination' in message:
+        return 'unavailable', 'blocked_destination'
+    if any(s in message for s in ('unsupported child process', 'unsupported deno', 'only local ffmpeg')):
+        return 'unavailable', 'blocked_process'
+    if 'http error 429' in message or 'too many requests' in message:
+        return 'unavailable', 'upstream_rate_limited'
+    if 'http error 403' in message or 'http error 401' in message:
+        return 'unavailable', 'upstream_forbidden'
+    if 'limit' in message or 'bounds' in message:
+        return 'bounds', 'bounds'
+    if 'drm' in message:
+        return 'protected', 'protected'
+    if any(s in message for s in ('please sign in', 'please log in', 'login required', 'requires authentication', 'requires login')):
+        return 'authentication_required', 'youtube_login_required' if youtube else 'authentication_required'
+    if 'unsupported' in message:
+        return 'unsupported', 'unsupported'
+    return 'unavailable', 'upstream_failure'
+
+
+class DiagnosticLogger:
+    """Retain only fixed flags; no raw messages, URLs or provider tracebacks."""
+    def __init__(self, youtube):
+        self.youtube, self.flags = youtube, set()
+
+    def debug(self, *args):
+        pass
+
+    def warning(self, message):
+        _, reason = classify_error(message, self.youtube)
+        if reason != 'upstream_failure':
+            self.flags.add(reason)
+
+    error = warning
+
+
+@functools.lru_cache(maxsize=4)
+def _deno_version(path):
+    try:
+        result = subprocess.run([path, '--version'], capture_output=True, text=True, timeout=5,
+                                env={'PATH': os.defpath, 'DENO_NO_UPDATE_CHECK': '1'})
+        match = re.match(r'deno (\d+\.\d+\.\d+)\b', result.stdout)
+        return match[1] if result.returncode == 0 and match else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def youtube_support():
+    reason = None
+    try:
+        ejs = importlib.metadata.version('yt-dlp-ejs')
+    except importlib.metadata.PackageNotFoundError:
+        ejs = None
+    runtime = shutil.which('deno')
+    version = _deno_version(runtime) if runtime else None
+    if ejs != EJS_VERSION:
+        reason = 'youtube_ejs_missing'
+    elif not runtime:
+        reason = 'youtube_js_runtime_missing'
+    elif version != DENO_VERSION:
+        reason = 'youtube_js_runtime_unsupported'
+    return dict(available=reason is None, runtime='deno', runtime_version=version,
+                ejs_version=ejs, diagnostic=safe_diagnostic(reason) if reason else None,
+                live_verified=False)
+
+
+DENO_INPUT_OPTIONS = frozenset((
+    '--ext=js', '--no-code-cache', '--no-prompt', '--no-remote', '--no-lock',
+    '--node-modules-dir=none', '--no-config', '--no-npm', '--cached-only',
+    '--v8-flags=--jitless',
+))
+DENO_SAFE_OPTIONS = (
+    '--ext=js', '--no-code-cache', '--no-prompt', '--no-remote', '--no-lock',
+    '--node-modules-dir=none', '--no-config', '--no-npm', '--cached-only',
+    '--deny-read', '--deny-write', '--deny-net', '--deny-env', '--deny-run',
+    '--deny-ffi', '--deny-sys', '--deny-import',
+    '--v8-flags=--jitless,--max-old-space-size=128',
+)
+
+
+def configure_limits():
+    if sys.platform == 'linux':
+        import resource
+        # V8 reserves a large PROT_NONE cage, so RLIMIT_AS prevents startup.
+        # RLIMIT_DATA bounds committed data allocations, not virtual reservations.
+        resource.setrlimit(resource.RLIMIT_DATA, (1024**3, 1024**3))
+        resource.setrlimit(resource.RLIMIT_CPU, (90, 90))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_BYTES, MAX_BYTES))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
 def select_formats(context, quality):
@@ -62,13 +201,33 @@ def install_guards():
     socket.socket.connect_ex = guarded_connect_ex
     popen = subprocess.Popen
     binaries = {str(Path(p).resolve()) for n in ('ffmpeg', 'ffprobe') if (p := shutil.which(n))}
+    deno = shutil.which('deno')
+    deno = str(Path(deno).resolve()) if deno else None
 
-    class LocalMediaProcess(popen):
+    class RestrictedProcess(popen):
         def __init__(self, args, *extra, **kwargs):
-            if not isinstance(args, (list, tuple)) or kwargs.get('shell'):
+            if (not isinstance(args, (list, tuple)) or not args or extra or kwargs.get('shell')
+                    or kwargs.get('executable') or kwargs.get('preexec_fn')
+                    or kwargs.get('start_new_session') or kwargs.get('pass_fds')
+                    or kwargs.get('process_group') not in (None, -1)):
                 raise PermissionError('Unsupported child process')
             executable = shutil.which(str(args[0]))
-            if not executable or str(Path(executable).resolve()) not in binaries:
+            executable = str(Path(executable).resolve()) if executable else None
+            if deno and executable == deno:
+                if list(args[1:]) == ['--version']:
+                    safe = [deno, '--version']
+                elif (len(args) >= 3 and args[1] == 'run' and args[-1] == '-'
+                      and all(a in DENO_INPUT_OPTIONS for a in args[2:-1])):
+                    safe = [deno, 'run', *DENO_SAFE_OPTIONS, '-']
+                else:
+                    raise PermissionError('Unsupported Deno invocation')
+                kwargs['env'] = {'PATH': os.defpath, 'LANG': 'C.UTF-8', 'NO_COLOR': '1',
+                                 'DENO_NO_UPDATE_CHECK': '1', 'DENO_NO_PROMPT': '1',
+                                 'DENO_DIR': str(Path.cwd()/'.deno')}
+                kwargs['cwd'] = str(Path.cwd())
+                super().__init__(safe, *extra, **kwargs)
+                return
+            if not executable or executable not in binaries:
                 raise PermissionError('Only local FFmpeg processes are allowed')
             safe = []
             for arg in args:
@@ -79,16 +238,13 @@ def install_guards():
                 safe[1:1] = ['-protocol_whitelist', 'file,pipe']
             super().__init__(safe, *extra, **kwargs)
 
-    subprocess.Popen = LocalMediaProcess
+    subprocess.Popen = RestrictedProcess
 
 
 def main(root):
     root = Path(root).resolve()
     os.chdir(root)
-    if sys.platform == 'linux':
-        import resource
-        resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_BYTES, MAX_BYTES))
+    configure_limits()
     request = json.loads((root/'request.json').read_text())
     last = 0.0
 
@@ -107,9 +263,19 @@ def main(root):
     def watchdog():
         while True:
             if os.getppid() != parent or time.monotonic() > deadline:
+                if os.name == 'posix' and os.getpgrp() == os.getpid() and os.getpid() > 1:
+                    os.killpg(os.getpid(), signal.SIGKILL)
                 os._exit(1)
             time.sleep(.5)
     threading.Thread(target=watchdog, daemon=True).start()
+    from urllib.parse import urlsplit
+    host = (urlsplit(request['url']).hostname or '').lower().rstrip('.')
+    youtube = host == 'youtu.be' or host.endswith('.youtu.be') or host == 'youtube.com' or host.endswith('.youtube.com')
+    if youtube:
+        support = youtube_support()
+        if not support['available']:
+            report('failed', error_code='unavailable', diagnostic=support['diagnostic'])
+            return
     install_guards()
     # Import after the process guard so yt-dlp's Popen subclass inherits it.
     import yt_dlp
@@ -138,23 +304,20 @@ def main(root):
         report('downloading', downloaded=downloaded, total=total,
                title=str(info.get('title') or '')[:200])
 
-    class Quiet:
-        def debug(self, *args): pass
-        def warning(self, *args): pass
-        def error(self, *args): pass
-
+    logger = DiagnosticLogger(youtube)
     quality = request['quality']
     options = dict(
         format=lambda context: select_formats(context, quality),
         outtmpl=str(root/'video.%(ext)s'), paths={'home': str(root), 'temp': str(root)},
         noplaylist=True, playlist_items='1', cachedir=False, proxy='',
-        cookiefile=None, cookiesfrombrowser=None, plugin_dirs=[], js_runtimes={},
+        cookiefile=None, cookiesfrombrowser=None, plugin_dirs=[],
+        js_runtimes={'deno': {'path': shutil.which('deno')}} if youtube else {},
         remote_components=set(), enable_file_urls=False, allow_unplayable_formats=False,
         socket_timeout=15, retries=0, fragment_retries=0, extractor_retries=0,
         concurrent_fragment_downloads=1, hls_prefer_native=True,
         external_downloader='native', skip_unavailable_fragments=False,
         max_filesize=MAX_BYTES, progress_hooks=[progress],
-        merge_output_format='mp4', fixup='never', logger=Quiet(),
+        merge_output_format='mp4', fixup='never', logger=logger,
         quiet=True, no_warnings=True, windowsfilenames=True,
     )
     report('probing')
@@ -191,17 +354,8 @@ def main(root):
         report('completed', title=str(result.get('title') or '')[:200], duration=duration,
                height=video['height'], width=video['width'], size=output.stat().st_size)
     except Exception as exc:
-        message = str(exc).lower()
-        code = 'unavailable'
-        if 'limit' in message or 'bounds' in message:
-            code = 'bounds'
-        elif 'drm' in message:
-            code = 'protected'
-        elif any(s in message for s in ('sign in', 'login', 'cookies')):
-            code = 'authentication_required'
-        elif 'unsupported' in message:
-            code = 'unsupported'
-        report('failed', error_code=code)
+        code, reason = classify_error(exc, youtube)
+        report('failed', error_code=code, diagnostic=safe_diagnostic(reason, logger.flags))
         sys.exit(1)
 
 
