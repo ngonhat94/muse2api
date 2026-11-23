@@ -16,8 +16,8 @@ ROOT=Path(__file__).resolve().parents[1]
 LABEL='io.muse.pot-isolation-test'
 
 
-def docker(*args,check=True):
-    return subprocess.run(['docker',*args],capture_output=True,text=True,check=check,timeout=120)
+def docker(*args,check=True,source=None):
+    return subprocess.run(['docker',*args],input=source,capture_output=True,text=True,check=check,timeout=120)
 
 
 def wait_health(name):
@@ -62,6 +62,7 @@ while True:
                    '--cap-drop=ALL','--cap-add=NET_ADMIN','--read-only','--entrypoint','python3',guard_image,'-c',fixture_code)
             created.append(fixture)
             docker('exec',fixture,'ip','addr','add','93.184.216.244/32','dev','eth0')
+            docker('exec',fixture,'ip','addr','add','169.254.169.254/32','dev','eth0')
             docker('run','-d','--name',guard,'--label',LABEL+'='+tag,'--network',network,'--ip','93.184.216.242',
                    '--read-only','--cap-drop=ALL','--cap-add=NET_ADMIN','--security-opt=no-new-privileges',
                    '--mount','type=bind,source='+str(config)+',target=/etc/muse-pot/policy.json,readonly',
@@ -95,6 +96,26 @@ print('PASS: kernel policy allows synthetic TCP443/DNS, blocks alternate port/ho
             output=[x['rule'] for x in table['nftables'] if 'rule' in x and x['rule']['chain']=='output']
             counters=[sum(e.get('counter',{}).get('packets',0) for e in rule['expr']) for rule in output]
             assert counters[1]>0 and counters[2]>0 and counters[-1]>0,counters
+            # Filtering after namespace DNAT prevents public TCP443 being
+            # translated to the synthetic metadata listener on the fixture.
+            nat='''table ip synthetic_dnat {
+ chain out { type nat hook output priority -100; policy accept;
+ ip daddr 93.184.216.243 tcp dport 443 dnat to 169.254.169.254:443
+ }
+}\n'''
+            docker('exec','-i',guard,'nft','-f','-',source=nat)
+            denied='''import socket
+try:socket.create_connection(('93.184.216.243',443),timeout=.3);raise AssertionError('DNAT bypass')
+except OSError:pass
+'''
+            docker('run','--rm','--network','container:'+guard,'--user','10001:10001','--cap-drop=ALL',
+                   '--entrypoint','python3',guard_image,'-c',denied)
+            after=json.loads(docker('exec',guard,'nft','-j','list','table','inet','muse_pot_guard').stdout)
+            after_rules=[x['rule'] for x in after['nftables'] if 'rule' in x and x['rule']['chain']=='output']
+            hits=sum(e.get('counter',{}).get('packets',0) for e in after_rules[1]['expr'])
+            assert hits>counters[1], 'Post-DNAT private destination did not hit deny rule'
+            docker('exec',guard,'nft','delete','table','ip','synthetic_dnat')
+            print('PASS: post-DNAT private destination remains blocked by kernel policy')
             # Same policy reinstall is atomic and readiness remains valid.
             docker('exec',guard,'python3','-c','import net_guard; net_guard.install(); assert net_guard.ready()')
             # Simulate privileged policy loss: health must revoke even if marker remains.

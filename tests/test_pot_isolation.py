@@ -67,6 +67,7 @@ class IsolationTest(unittest.TestCase):
         self.assertTrue(text.startswith('delete table inet muse_pot_guard\n'))
         self.assertNotIn('flush ruleset',text)
         self.assertIn('meta nfproto ipv6 counter drop',text)
+        self.assertIn('hook output priority 0',text)
         self.assertLess(text.index('ip daddr @host_v4'),text.index('tcp dport 443'))
         self.assertIn('policy drop',text)
 

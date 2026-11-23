@@ -20,7 +20,7 @@ Docker may attach the guard's dedicated bridge before policy initialization, but
 
 1. Drop all IPv6, plus IPv4 loopback/unspecified/private/link-local/CGNAT/test/benchmark/multicast/reserved ranges and the known special metadata endpoint 168.63.129.16.
 2. Drop the configured host/tenant destinations **before** any allow rule.
-3. Allow UDP/TCP53 only to the reviewed public `resolver_v4` and IPv4 TCP443 to remaining public destinations. Drop everything else. Input permits established/related replies only.
+3. Allow UDP/TCP53 only to the reviewed public `resolver_v4` and IPv4 TCP443 to remaining public destinations. Drop everything else. Input permits established/related replies only. Output filtering runs at priority 0, after namespace DNAT, so a public TCP443 destination translated to a private address is still denied.
 
 This is IP/port isolation, not a domain allowlist. Arbitrary remaining public IPv4 HTTPS, including potential tunnelling services, is within the allow policy. Provider cannot resolve to or reach private/host destinations merely by DNS rebinding because filtering applies to the final destination IP. DNS-over-HTTPS to an allowed public address is not blocked by this design. Stricter domain restrictions require a separately reviewed gateway. Bind a read-only `resolv.conf` containing the same approved resolver (example `nameserver 1.1.1.1`); no blanket localhost/Docker DNS exception exists. DNS resolver and host deny ranges must not overlap. Account for cloud perimeter rules separately.
 

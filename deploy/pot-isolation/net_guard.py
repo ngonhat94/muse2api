@@ -44,7 +44,8 @@ def policy(value):
         networks.append(net)
     if any(resolver in n for n in networks + [ipaddress.ip_network(n) for n in BLOCKED]):
         raise ValueError('Resolver overlaps a denied network')
-    return dict(resolver_v4=str(resolver), deny_host_v4=sorted(set(map(str, networks))))
+    return dict(resolver_v4=str(resolver),
+                deny_host_v4=sorted(map(str, ipaddress.collapse_addresses(networks))))
 
 
 def rules(value, replace=False):
@@ -58,7 +59,7 @@ def rules(value, replace=False):
  set blocked_v4 {{ type ipv4_addr; flags interval; elements = {{ {deny} }}; }}
  set host_v4 {{ type ipv4_addr; flags interval; elements = {{ {hosts} }}; }}
  chain output {{
-  type filter hook output priority -300; policy drop;
+  type filter hook output priority 0; policy drop;
   meta nfproto ipv6 counter drop
   ip daddr @blocked_v4 counter drop
   ip daddr @host_v4 counter drop
@@ -68,7 +69,7 @@ def rules(value, replace=False):
   counter drop
  }}
  chain input {{
-  type filter hook input priority -300; policy drop;
+  type filter hook input priority 0; policy drop;
   meta nfproto ipv6 counter drop
   ct state established,related counter accept
   counter drop
