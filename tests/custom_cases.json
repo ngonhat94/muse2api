@@ -221,5 +221,9 @@
   [
     "test_pot_broker.py",
     []
+  ],
+  [
+    "test_pot_isolation.py",
+    []
   ]
 ]

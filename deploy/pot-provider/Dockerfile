@@ -12,11 +12,12 @@ FROM node:26-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c01
 RUN apt-get update && apt-get install -y --no-install-recommends python3 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 ca-certificates && rm -rf /var/lib/apt/lists/*
 # Includes upstream GPL source, lockfile and license for the exact build.
 COPY --from=build /opt/bgutil /opt/bgutil
+RUN groupadd --gid 10001 muse-pot && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin muse-pot
 WORKDIR /opt/muse
-COPY --chown=1000:1000 pot_broker.py ./
-COPY --chown=1000:1000 deploy/pot-provider/server.py deploy/pot-provider/mint.mjs ./
-COPY --chown=1000:1000 tools/check_pot_sidecar.py ./check_offline.py
-COPY --chown=1000:1000 tests/pot_mint_contract.mjs ./mint_contract.mjs
+COPY --chown=10001:10001 pot_broker.py ./
+COPY --chown=10001:10001 deploy/pot-provider/server.py deploy/pot-provider/mint.mjs ./
+COPY --chown=10001:10001 tools/check_pot_sidecar.py ./check_offline.py
+COPY --chown=10001:10001 tests/pot_mint_contract.mjs ./mint_contract.mjs
 ENV PYTHONDONTWRITEBYTECODE=1
-USER 1000:1000
+USER 10001:10001
 ENTRYPOINT ["python3","/opt/muse/server.py"]

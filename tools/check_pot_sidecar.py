@@ -65,4 +65,8 @@ with tempfile.TemporaryDirectory() as root, \
         thread.join(3);timer.join()
         assert finished.is_set() and not thread.is_alive()
         assert broker.response is None
+        broker.close()
+        listener.close()
+        sidecar.prepare_socket(Path(path))
+        assert not Path(path).exists()
 print('PASS: sidecar real Unix IPC/peer UID, synthetic job cache, no generator process/network')
