@@ -225,7 +225,7 @@ class ReferenceService:
                 if previous['payload'] != fingerprint:
                     raise HTTPException(409, 'request_id already used for another action')
                 return self.projects.get(owner, previous['project'])
-            if key in self.projects.data['requests']:
+            if key in self.projects.data['requests'] or key in self.projects.data.get('image_imports', {}):
                 raise HTTPException(409, 'request_id already used for another action')
             if job['status'] != 'completed':
                 raise HTTPException(409, 'Reference video is not completed')
