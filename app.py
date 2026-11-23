@@ -2831,6 +2831,68 @@ async def _project_planner(project, principal):
     return planning_content(result)
 
 
+@app.post('/v1/video-projects/from-images')
+@_bounded_reference
+async def create_image_storyboard(request: Request, principal=Depends(auth)):
+    from starlette.formparsers import MultiPartParser, MultiPartException
+    from starlette.datastructures import UploadFile
+    from image_projects import import_images
+    from first_frames import MAX_UPLOAD
+    if not request.headers.get('content-type', '').lower().startswith('multipart/form-data;'):
+        raise HTTPException(415, 'Expected image storyboard multipart upload')
+    _project_preflight(principal)
+    owner = _owner(principal)
+    job = _REFERENCE_JOB.get()
+    # Bound the complete multipart body before parsing, including field headers.
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > 65 * 1024**2:
+            raise HTTPException(413, 'Image storyboard upload exceeds 65 MiB')
+        body.extend(chunk)
+    async def stream():
+        yield bytes(body)
+    parser = MultiPartParser(request.headers, stream(), max_files=12, max_fields=1)
+    parser.spool_max_size = 65 * 1024**2
+    parser.max_file_size = 65 * 1024**2
+    try:
+        form = await parser.parse()
+    except BaseException as exc:
+        for handle in parser._files_to_close_on_error:
+            handle.close()
+        if isinstance(exc, (MultiPartException, ValueError)):
+            raise HTTPException(422, 'Invalid image storyboard multipart upload') from None
+        raise
+    try:
+        items = list(form.multi_items())
+        fields = [v for k, v in items if k == 'metadata' and isinstance(v, str)]
+        uploads = [v for k, v in items if k == 'images' and isinstance(v, UploadFile)]
+        if len(fields) != 1 or len(items) != len(uploads) + 1 or not 3 <= len(uploads) <= 12:
+            raise HTTPException(422, 'Require metadata and 3-12 images')
+        try:
+            metadata = json.loads(fields[0])
+        except (ValueError, TypeError):
+            raise HTTPException(422, 'Invalid storyboard metadata') from None
+        if not isinstance(metadata, dict):
+            raise HTTPException(422, 'Invalid storyboard metadata')
+        images = []
+        for upload in uploads:
+            data = await upload.read(MAX_UPLOAD + 1)
+            if not data or len(data) > MAX_UPLOAD:
+                raise HTTPException(413, 'Each image must be at most 8 MiB')
+            images.append(data)
+        if sum(map(len, images)) > 64 * 1024**2:
+            raise HTTPException(413, 'Images exceed 64 MiB')
+        return await asyncio.to_thread(import_images, VIDEO_PROJECTS, store, owner, metadata, images, job.check)
+    finally:
+        await form.close()
+
+
+@app.get('/v1/video-projects/image-imports/{request_id}')
+def image_storyboard_receipt(request_id: str, principal=Depends(auth)):
+    from image_projects import import_receipt
+    return import_receipt(VIDEO_PROJECTS, _owner(principal), request_id)
+
+
 @app.post('/v1/video-projects/{pid}/scenes/{sid}/first-frame')
 @_bounded_reference
 async def replace_first_frame(pid: str, sid: str, revision: int, request: Request, principal=Depends(auth)):

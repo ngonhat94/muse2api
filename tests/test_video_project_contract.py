@@ -5,6 +5,87 @@ import app
 
 
 class ProjectContractTest(unittest.TestCase):
+    def test_image_storyboard_atomic_replay_ownership_and_rollback(self):
+        import io
+        import json
+        from PIL import Image
+        from uuid import uuid4
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from video_projects import ProjectService
+
+        client = TestClient(app.app)
+        _, key = app.users.create('Image storyboard fixture')
+        _, other = app.users.create('Other image storyboard fixture')
+        auth = {'Authorization': 'Bearer ' + key}
+        foreign = {'Authorization': 'Bearer ' + other}
+        data = []
+        for color in ('red', 'green', 'blue'):
+            buf = io.BytesIO()
+            Image.new('RGB', (32, 24), color).save(buf, 'PNG')
+            data.append(buf.getvalue())
+        metadata = dict(request_id=str(uuid4()), title='Bộ ảnh tổng hợp',
+                        idea='Ba cảnh màu', aspect_ratio='9:16', duration=2)
+        endpoint = '/v1/video-projects/from-images'
+        def upload(meta=metadata, images=data):
+            return client.post(endpoint, headers=auth, data={'metadata': json.dumps(meta)},
+                               files=[('images', ('frame.png', image, 'image/png')) for image in images])
+        self.assertEqual(client.post(endpoint).status_code, 401)
+        self.assertEqual(upload(images=data[:2]).status_code, 422)
+        self.assertEqual(upload(images=[data[0], b'bad', data[2]]).status_code, 422)
+        p = upload()
+        self.assertEqual(p.status_code, 200, p.text[:120])
+        p = p.json()
+        self.assertEqual(p['first_frame_mode'], 'review')
+        self.assertFalse(p['script_approved'])
+        self.assertEqual(len(p['scenes']), 3)
+        self.assertTrue(all(not scene['approved'] and not scene['first_frame']['approved']
+                            and not scene['attempts'] for scene in p['scenes']))
+        receipt = '/v1/video-projects/image-imports/' + metadata['request_id']
+        self.assertEqual(client.get(receipt, headers=auth).json()['id'], p['id'])
+        self.assertEqual(client.get(receipt, headers=foreign).status_code, 404)
+        self.assertEqual(upload().json()['id'], p['id'])
+        self.assertEqual(upload(images=list(reversed(data))).status_code, 409)
+        scene = p['scenes'][0]
+        image_url = f"/v1/video-projects/{p['id']}/scenes/{scene['id']}/first-frame/{scene['first_frame']['id']}"
+        self.assertEqual(client.get(image_url, headers=auth).status_code, 200)
+        self.assertEqual(client.get(image_url, headers=foreign).status_code, 404)
+        with patch.object(app, 'VIDEO_PROJECTS', ProjectService(app.VIDEO_PROJECTS.path)):
+            self.assertEqual(client.get(receipt, headers=auth).json()['id'], p['id'])
+        self.assertEqual(upload(meta=dict(metadata, request_id=str(uuid4()), duration=11),
+                                images=data * 4).status_code, 422)
+        self.assertEqual(upload(meta=dict(metadata, request_id=str(uuid4())),
+                                images=data * 4 + data[:1]).status_code, 422)
+        maximum = upload(meta=dict(metadata, request_id=str(uuid4()), duration=10), images=data * 4)
+        self.assertEqual(maximum.status_code, 200, maximum.text[:120])
+        self.assertEqual(len(maximum.json()['scenes']), 12)
+        self.assertEqual(maximum.json()['scenes'][-1]['order'], 11)
+        generate = f"/v1/video-projects/{p['id']}/scenes/{scene['id']}/generate"
+        self.assertEqual(client.post(generate, headers=auth,
+            json=dict(revision=p['revision'], request_id=metadata['request_id'])).status_code, 409)
+        # An editorial update after a render exists must not interpret the import as a render receipt.
+        app.VIDEO_PROJECTS.data['projects'][p['id']]['render'] = dict(id='fixture-render', status='failed')
+        changed = client.patch('/v1/video-projects/'+p['id'], headers=auth,
+                               json=dict(revision=p['revision'], title='Updated storyboard'))
+        self.assertEqual(changed.status_code, 200, changed.text[:120])
+        # A quota failure after one image must roll back files, project and receipt.
+        names = []
+        write = app.store.write_media
+        def limited(name, image, owner):
+            if names:
+                raise HTTPException(507, 'Synthetic quota exhausted')
+            result = write(name, image, owner)
+            names.append(name)
+            return result
+        count = len(app.VIDEO_PROJECTS.data['projects'])
+        failed = dict(metadata, request_id=str(uuid4()))
+        with patch.object(app.store, 'write_media', side_effect=limited):
+            self.assertEqual(upload(meta=failed).status_code, 507)
+        self.assertEqual(len(app.VIDEO_PROJECTS.data['projects']), count)
+        self.assertIsNone(app.store.media_owner(names[0]))
+        self.assertEqual(client.get('/v1/video-projects/image-imports/'+failed['request_id'], headers=auth).status_code, 404)
+        self.assertEqual(upload(meta=failed).status_code, 200)
+
     def test_first_frame_isolation_review_and_exact_generation_input(self):
         import base64
         import io

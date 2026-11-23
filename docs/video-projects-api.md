@@ -116,3 +116,17 @@ Under `/v1/video-projects/{pid}/scenes/{sid}/first-frame`, all routes require th
 - GET `/{frame_id}` serves the current JPEG with private, no-store caching. Foreign projects and mismatched frame IDs return 404.
 - POST `/{frame_id}/approve?revision=…` approves that specific image and records its digest. Frame edits return the updated project snapshot. After an uncertain edit response, GET the project before making another edit.
 - Generation snapshots the verified JPEG before persisting the usual UUID receipt and passes those exact bytes as the sole starting image to the existing video provider. Attempts record `first_frame_id`. Missing, expired, changed or unapproved input blocks admission with 409. Reloads and UUID replays do not invoke generation.
+
+## Image storyboard import
+
+POST /v1/video-projects/from-images creates an unapproved project from 3–12 local still images. The authenticated multipart upload contains exactly one metadata JSON field and repeated images files in storyboard order. Metadata contains request_id (UUID), title, idea, aspect_ratio and duration.
+
+The initial duration is an integer 1–15 seconds per scene, with at most 120 seconds total. Title/idea/aspect use ProjectCreate validation. Images accept static JPEG, PNG and WebP, at most 8 MiB and 16 megapixels each, 64 MiB total, multipart body at most 65 MiB. The server applies the existing first-frame normalization, owner media writer, quota and authority checks. Upload filenames are ignored.
+
+HTTP 200 returns the project snapshot with source_mode=images and first_frame_mode=review. The idea becomes an editable script. Every scene has an editable default motion prompt, an empty narration, an unapproved first frame, no takes and no selection. Script, scene and image approvals remain explicit. Import does not invoke AI or speech providers. Later edits, generation, narration, captions and rendering use the existing project APIs.
+
+The server stores the project and UUID receipt atomically. A failed transaction removes its newly written images. Retrying the same owner/UUID and canonical ordered images/metadata returns the existing project's latest state. Changing payload or reusing a UUID from another action returns 409. Replays and fresh creates both retain the existing request admission limits.
+
+GET /v1/video-projects/image-imports/{request_id} returns the current project for an accepted import belonging to the caller. A missing or foreign receipt returns 404. A missing receipt can also mean an upload is still being processed. Clients preserve the original UUID and payload, check the receipt after an uncertain outcome, and require an explicit user action to retry with the same UUID. Reopening the client never submits the import automatically.
+
+Scenes may be reordered through the existing revision-guarded PATCH using their original IDs and new unique zero-based orders. First frames, takes and selected media remain attached to those IDs. Content/order edits follow the existing approval/outdated-render rules.
